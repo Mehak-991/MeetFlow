@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./screenshots/logo.png" alt="MeetFlow Logo" width="200"/>
+<img src="./screenshots/neomeet.png" alt="MeetFlow Logo" width="200"/>
 
 # MeetFlow – Video Conferencing Application
 
