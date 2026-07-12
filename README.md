@@ -304,7 +304,7 @@ Build production
 npm run build
 ```
 
-Deploy using Vercel
+Deploy using 
 
 ```
 vercel --prod
