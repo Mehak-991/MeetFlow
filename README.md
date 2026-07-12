@@ -85,58 +85,7 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 
 ## Project Structure
 
-```mermaid
-flowchart TD
-
-A[MeetFlow]
-
-A --> B[backend]
-B --> C[src]
-
-C --> D[controllers]
-D --> D1[socketManager.js]
-D --> D2[user.controller.js]
-
-C --> E[models]
-E --> E1[meeting.model.js]
-E --> E2[user.model.js]
-
-C --> F[routes]
-F --> F1[users.routes.js]
-
-C --> G[app.js]
-
-A --> H[frontend]
-
-H --> I[public]
-I --> I1[screenshots]
-I --> I2[index.html]
-
-H --> J[src]
-
-J --> K[contexts]
-K --> K1[AuthContext.jsx]
-K --> K2[ThemeContext.jsx]
-
-J --> L[pages]
-L --> L1[landing.jsx]
-L --> L2[authentication.jsx]
-L --> L3[home.jsx]
-L --> L4[VideoMeet.jsx]
-L --> L5[history.jsx]
-
-J --> M[styles]
-M --> M1[videoComponent.module.css]
-
-J --> N[utils]
-N --> N1[withAuth.jsx]
-
-J --> O[App.js]
-J --> P[App.css]
-J --> Q[index.js]
-
-A --> R[README.md]
-```
+![MeetFlow Project Structure](./docs/mermaid-diagram%20(1).png)
 
 
 # Installation
