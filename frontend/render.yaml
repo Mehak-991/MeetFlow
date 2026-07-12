@@ -1,0 +1,11 @@
+# Node version
+NODE_VERSION=18
+
+# Build command
+BUILD_COMMAND=npm install && npm run build
+
+# Start command  
+START_COMMAND=npx serve -s build -l $PORT
+
+# Auto deploy
+AUTO_DEPLOY=yes
