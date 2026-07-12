@@ -4,7 +4,6 @@ import { AiOutlineLock } from "react-icons/ai";
 import { FiZap } from "react-icons/fi";
 import { HiOutlineVideoCamera, HiOutlineChatBubbleLeftRight } from "react-icons/hi2";
 import { MdDevices, MdCloudQueue, MdLightMode, MdDarkMode } from "react-icons/md";
-import { BsCheckCircle } from "react-icons/bs";
 import { useTheme } from "../contexts/ThemeContext";
 import "../App.css";
 
@@ -730,7 +729,7 @@ export default function LandingPage() {
             }}
           >
             <a
-              href="#"
+              href="#/"
               style={{
                 color: "#ccc",
                 textDecoration: "none",
@@ -742,7 +741,7 @@ export default function LandingPage() {
               About
             </a>
             <a
-              href="#"
+              href="#/"
               style={{
                 color: "#ccc",
                 textDecoration: "none",
@@ -754,7 +753,7 @@ export default function LandingPage() {
               Contact
             </a>
             <a
-              href="#"
+              href="#/"
               style={{
                 color: "#ccc",
                 textDecoration: "none",
@@ -766,7 +765,7 @@ export default function LandingPage() {
               Privacy
             </a>
             <a
-              href="#"
+              href="#/"
               style={{
                 color: "#ccc",
                 textDecoration: "none",
@@ -778,7 +777,7 @@ export default function LandingPage() {
               Terms
             </a>
             <a
-              href="#"
+              href="#/"
               style={{
                 color: "#ccc",
                 textDecoration: "none",
