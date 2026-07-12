@@ -69,6 +69,31 @@ export default function Authentication() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
 
+      {/* Top Navbar with Logo */}
+      <Box
+        sx={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 9999,
+          display: "flex",
+          alignItems: "center",
+          px: "40px",
+          py: "6px",
+          backgroundColor: darkMode ? "rgba(10,10,10,0.9)" : "rgba(255,255,255,0.9)",
+          backdropFilter: "blur(12px)",
+          boxShadow: "0 2px 15px rgba(0,0,0,0.1)",
+        }}
+      >
+        <img
+          src="/erasebg-transformed (1).png"
+          alt="MeetFlow Logo"
+          style={{ height: "90px", width: "auto", cursor: "pointer" }}
+          onClick={() => window.location.href = "/"}
+        />
+      </Box>
+
       {/* Container: responsive flex (column on xs, row on md+) */}
       <Box
         component="main"
@@ -79,6 +104,7 @@ export default function Authentication() {
           flexDirection: { xs: "column", md: "row" },
           overflow: "hidden",
           backgroundColor: darkMode ? '#0a0a0a' : '#f5f5f5',
+          pt: "102px",
         }}
       >
         {/* Left panel */}

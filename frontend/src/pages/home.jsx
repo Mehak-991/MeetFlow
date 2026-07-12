@@ -47,7 +47,7 @@ function HomeComponent() {
           <img
             src="/erasebg-transformed (1).png"
             alt="Logo"
-            style={{ height: "48px", cursor: "pointer" }}
+            style={{ height: "110px", cursor: "pointer" }}
             onClick={() => navigate("/")}
           />
         </div>
