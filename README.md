@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./screenshots/neomeet.png" alt="MeetFlow Logo" width="200"/>
-
-# MeetFlow – Video Conferencing Application
+<img src="./screenshots/logo1.png" alt="MeetFlow Logo" width="200"/>
+        
+<h1>MeetFlow – Video Conferencing Application</h1>
 
 <p><em>Connect • Collaborate • Communicate</em></p>
 
