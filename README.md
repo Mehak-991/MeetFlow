@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./screenshots/logo1.png" alt="MeetFlow Logo" width="200"/>
+<img src="./screenshots/logo1.png" alt="MeetFlow Logo" width="300"/>
         
 <h1>MeetFlow – Video Conferencing Application</h1>
 
