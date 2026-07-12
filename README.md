@@ -6,6 +6,16 @@
 
 <p><em>Connect • Collaborate • Communicate</em></p>
 
+<p>
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"/>
+  <img src="https://img.shields.io/badge/Node.js-v14%2B-green?logo=node.js" alt="Node.js"/>
+  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React"/>
+  <img src="https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb" alt="MongoDB"/>
+  <img src="https://img.shields.io/badge/WebRTC-Enabled-orange?logo=webrtc" alt="WebRTC"/>
+  <img src="https://img.shields.io/badge/Socket.io-Real--Time-black?logo=socket.io" alt="Socket.io"/>
+  <img src="https://img.shields.io/github/stars/Mehak-991/MeetFlow?style=social" alt="Stars"/>
+</p>
+
 </div>
 
 ---
@@ -18,19 +28,25 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 
 ---
 
+# Live Demo
+
+> 🚀 **[Try MeetFlow Live →](https://github.com/Mehak-991/MeetFlow)**
+
+---
+
 # Features
 
 | Feature | Description |
 |------|-------------|
-| Video Calls | Real-time video and audio communication |
-| Real-Time Chat | Send messages during meetings |
-| Screen Sharing | Share screen with participants |
-| Multi-Participant Meetings | Support for multiple users |
-| Secure Authentication | Login and registration system |
-| Dark / Light Mode | UI theme toggle |
-| Meeting Code Join | Join meeting via code |
-| Responsive Design | Works across devices |
-| Real-Time Signaling | WebRTC signaling via Socket.io |
+| 🎥 Video Calls | Real-time video and audio communication |
+| 💬 Real-Time Chat | Send messages during meetings |
+| 🖥️ Screen Sharing | Share screen with participants |
+| 👥 Multi-Participant Meetings | Support for multiple users |
+| 🔐 Secure Authentication | Login and registration system |
+| 🌗 Dark / Light Mode | UI theme toggle |
+| 🔑 Meeting Code Join | Join meeting via code |
+| 📱 Responsive Design | Works across devices |
+| ⚡ Real-Time Signaling | WebRTC signaling via Socket.io |
 
 ---
 
@@ -72,7 +88,7 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 ```mermaid
 flowchart TD
 
-A[ApnaVideoCall]
+A[MeetFlow]
 
 A --> B[backend]
 B --> C[src]
@@ -300,31 +316,38 @@ Controls available
 
 # Deployment
 
-## Backend Deployment (Heroku Example)
+## Backend Deployment (Render / Railway)
 
-Create Procfile
+> ✅ **Recommended:** Use [Render](https://render.com) or [Railway](https://railway.app) — both free tiers available in 2025.
+
+### Deploy on Render
+
+1. Push code to GitHub
+2. Go to [render.com](https://render.com) → New Web Service
+3. Connect your GitHub repo
+4. Set Build Command: `npm install`
+5. Set Start Command: `node src/app.js`
+6. Add environment variables in dashboard
+
+### Deploy on Railway
 
 ```
-web: node src/app.js
-```
-
-Deploy
-
-```
-heroku create MeetFlow-backend
-git push heroku main
+npm install -g @railway/cli
+railway login
+railway init
+railway up
 ```
 
 Set environment variables
 
 ```
-heroku config:set MONGODB_URI=your_uri
-heroku config:set JWT_SECRET=your_secret
+railway variables set MONGODB_URI=your_uri
+railway variables set JWT_SECRET=your_secret
 ```
 
 ---
 
-## Frontend Deployment
+## Frontend Deployment (Vercel / Netlify)
 
 Build production
 
@@ -332,13 +355,13 @@ Build production
 npm run build
 ```
 
-Deploy using
+Deploy using Vercel
 
 ```
 vercel --prod
 ```
 
-or
+or Netlify
 
 ```
 netlify deploy --prod
@@ -374,32 +397,6 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ---
 
-# Contributing
-
-1 Fork the repository
-
-2 Create branch
-
-```
-git checkout -b feature/your-feature
-```
-
-3 Commit changes
-
-```
-git commit -m "Add feature"
-```
-
-4 Push branch
-
-```
-git push origin feature/your-feature
-```
-
-5 Open Pull Request
-
----
-
 # License
 
 This project is licensed under the **MIT License**.
@@ -408,6 +405,8 @@ This project is licensed under the **MIT License**.
 
 # Author
 
-MeetFlow Development Team
+**Mehak Verma**
 
-For support or issues open a GitHub issue.
+[![GitHub](https://img.shields.io/badge/GitHub-Mehak--991-181717?logo=github)](https://github.com/Mehak-991)
+
+For support or issues, open a [GitHub Issue](https://github.com/Mehak-991/MeetFlow/issues).
