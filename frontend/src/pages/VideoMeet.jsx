@@ -46,7 +46,7 @@ export default function VideoMeetComponent() {
 
   let [message, setMessage] = useState("");
 
-  let [newMessages, setNewMessages] = useState(3);
+  let [newMessages, setNewMessages] = useState(0);
 
   let [askForUsername, setAskForUsername] = useState(true);
 
@@ -449,15 +449,8 @@ export default function VideoMeetComponent() {
     window.location.href = "/";
   };
 
-  let openChat = () => {
-    setModal(true);
-    setNewMessages(0);
-  };
   let closeChat = () => {
     setModal(false);
-  };
-  let handleMessage = (e) => {
-    setMessage(e.target.value);
   };
 
   const addMessage = (data, sender, socketIdSender) => {
@@ -489,7 +482,6 @@ export default function VideoMeetComponent() {
   };
 
   const copyMeetingCode = () => {
-    const meetingCode = window.location.pathname.substring(1);
     const meetingLink = window.location.href;
     navigator.clipboard.writeText(meetingLink);
     setCopySnackbar(true);
@@ -664,11 +656,18 @@ export default function VideoMeetComponent() {
               )}
 
               <IconButton
-                onClick={() => setModal(!showModal)}
+                onClick={() => {
+                  setModal(!showModal);
+                  if (!showModal) {
+                    setNewMessages(0);
+                  }
+                }}
                 className={styles.controlButton}
                 size="large"
               >
-                <ChatIcon />
+                <Badge badgeContent={newMessages} color="error">
+                  <ChatIcon />
+                </Badge>
               </IconButton>
             </div>
           </main>

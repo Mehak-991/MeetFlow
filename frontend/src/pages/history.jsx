@@ -28,7 +28,7 @@ export default function History() {
       }
     };
     fetchHistory();
-  }, []);
+  }, [getHistoryOfUser]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
