@@ -223,98 +223,38 @@ Users can
 
 ---
 
-## Meeting Lobby
-
-![Lobby](./screenshots/Gemini_Generated_Image_evf7rdevf7rdevf7.png)
-
-Before joining users can
-
-- Preview camera
-- Enable microphone
-- Enter display name
-
----
-
-## Video Meeting Interface
-
-![Meeting](./screenshots/image12.png)
-
-Meeting interface includes
-
-- Video grid
-- Chat panel
-- Meeting controls
-- Participant display
-
----
-
-## Meeting Controls
-
-![Controls](./screenshots/final0mage.png)
-
-Controls available
-
-- Camera toggle
-- Microphone mute/unmute
-- Screen sharing
-- Chat panel
-- Copy meeting code
-- Leave meeting
-
----
-
 # Deployment
 
 ## Backend Deployment (Render / Railway)
 
-> ✅ **Recommended:** Use [Render](https://render.com) or [Railway](https://railway.app) — both free tiers available in 2025.
-
 ### Deploy on Render
-
-1. Push code to GitHub
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your GitHub repo
-4. Set Build Command: `npm install`
-5. Set Start Command: `node src/app.js`
-6. Add environment variables in dashboard
-
-### Deploy on Railway
-
-```
-npm install -g @railway/cli
-railway login
-railway init
-railway up
-```
-
-Set environment variables
-
-```
-railway variables set MONGODB_URI=your_uri
-railway variables set JWT_SECRET=your_secret
-```
+1. Go to [Render Dashboard](https://render.com) → **New Web Service**.
+2. Connect your GitHub repository.
+3. Configure the following settings:
+   * **Root Directory:** `backend`
+   * **Build Command:** `npm install`
+   * **Start Command:** `node src/app.js`
+4. Add the following **Environment Variables**:
+   * `MONGODB_URI` = `your_mongodb_connection_string`
+   * `JWT_SECRET` = `your_jwt_secret_key`
+   * `PORT` = `8000`
+   * `NODE_ENV` = `production`
+   * `FRONTEND_URL` = `https://your-frontend-app.vercel.app` *(Required for CORS to allow Vercel to access backend)*
 
 ---
 
 ## Frontend Deployment (Vercel / Netlify)
 
-Build production
-
-```
-npm run build
-```
-
-Deploy using 
-
-```
-vercel --prod
-```
-
-or Netlify
-
-```
-netlify deploy --prod
-```
+### Deploy on Vercel
+1. Go to the [Vercel Dashboard](https://vercel.com) → **Add New Project**.
+2. Import your GitHub repository.
+3. Configure the following settings:
+   * **Framework Preset:** `Create React App`
+   * **Root Directory:** `frontend`
+4. Add the following **Environment Variables**:
+   * `REACT_APP_API_URL` = `https://your-backend-app.onrender.com`
+   * `REACT_APP_SOCKET_URL` = `https://your-backend-app.onrender.com`
+5. Click **Deploy**.
 
 ---
 
