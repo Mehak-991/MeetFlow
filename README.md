@@ -7,6 +7,7 @@
 <p><em>Connect • Collaborate • Communicate</em></p>
 
 <p>
+  <a href="https://meet-flow-five.vercel.app"><b>🌐 Live Site</b></a> •
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"/>
   <img src="https://img.shields.io/badge/Node.js-v14%2B-green?logo=node.js" alt="Node.js"/>
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React"/>
@@ -25,12 +26,6 @@
 MeetFlow is a modern **real-time video conferencing application** that enables seamless communication through high-quality video calls, screen sharing, and instant messaging.
 
 Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simple interface for hosting and joining meetings with minimal setup.
-
----
-
-# Live Demo
-
-> 🚀 **[Try MeetFlow Live →](http://meet-flow-five.vercel.app/)**
 
 ---
 
