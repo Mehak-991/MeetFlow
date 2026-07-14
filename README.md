@@ -232,7 +232,7 @@ Users can
    * `JWT_SECRET` = `your_jwt_secret_key`
    * `PORT` = `8000`
    * `NODE_ENV` = `production`
-   * `FRONTEND_URL` = `https://your-frontend-app.vercel.app` *(Required for CORS to allow Vercel to access backend)*
+   * `FRONTEND_URL` = `https://meet-flow-five.vercel.app` *(Required for CORS. The backend is configured to dynamically allow any `.vercel.app` subdomains as well as this specific URL for cross-origin requests).*
 
 ---
 
@@ -245,8 +245,8 @@ Users can
    * **Framework Preset:** `Create React App`
    * **Root Directory:** `frontend`
 4. Add the following **Environment Variables**:
-   * `REACT_APP_API_URL` = `https://your-backend-app.onrender.com`
-   * `REACT_APP_SOCKET_URL` = `https://your-backend-app.onrender.com`
+   * `REACT_APP_API_URL` = `https://meetflow-z69w.onrender.com`
+   * `REACT_APP_SOCKET_URL` = `https://meetflow-z69w.onrender.com`
 5. Click **Deploy**.
 
 ---
