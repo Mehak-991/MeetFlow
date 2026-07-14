@@ -46,9 +46,30 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // CORS configuration
 // Allows frontend application to communicate with backend
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      "https://meet-flow-five.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ].filter(Boolean);
+
+    // Allow any vercel.app subdomain or explicitly listed origins
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".vercel.app")
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 // Global middleware
