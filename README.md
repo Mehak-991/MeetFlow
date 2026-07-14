@@ -30,7 +30,7 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 
 # Live Demo
 
-> 🚀 **[Try MeetFlow Live →](https://github.com/Mehak-991/MeetFlow)**
+> 🚀 **[Try MeetFlow Live →](http://meet-flow-five.vercel.app/)**
 
 ---
 
