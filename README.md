@@ -7,7 +7,6 @@
 <p><em>Connect • Collaborate • Communicate</em></p>
 
 <p>
-  <a href="https://meet-flow-five.vercel.app"><b>🌐 Live Site</b></a>  
   <img src="https://img.shields.io/badge/Node.js-v14%2B-green?logo=node.js" alt="Node.js"/>
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React"/>
   <img src="https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb" alt="MongoDB"/>
@@ -279,6 +278,9 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
 ---
+# Live Demo
+
+<a href="https://meet-flow-five.vercel.app"><b>🌐 Live Site</b></a>  
 
 # License
 
