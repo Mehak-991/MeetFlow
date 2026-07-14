@@ -14,7 +14,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import styles from "../styles/videoComponent.module.css";
 
-const server_url = process.env.REACT_APP_SOCKET_URL || "https://meetflow.onrender.com";
+const server_url = process.env.REACT_APP_SOCKET_URL || "https://meetflow-z69w.onrender.com";
 
 var connections = {};
 
