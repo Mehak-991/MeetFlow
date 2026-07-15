@@ -203,3 +203,114 @@ export const getDashboardInsights = async (req, res) => {
     return res.status(500).json({ message: error.message });
   }
 };
+
+export const createScheduledMeeting = async (req, res) => {
+  const { token, expiresAtChoice, password, waitingRoomEnabled } = req.body;
+  try {
+    const user = await getUserByToken(token);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let meetingCode = '';
+    for (let i = 0; i < 9; i++) {
+      meetingCode += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+
+    let expiresAt = null;
+    if (expiresAtChoice !== "never") {
+      const now = new Date();
+      if (expiresAtChoice === "30m") expiresAt = new Date(now.getTime() + 30 * 60000);
+      else if (expiresAtChoice === "1h") expiresAt = new Date(now.getTime() + 60 * 60000);
+      else if (expiresAtChoice === "2h") expiresAt = new Date(now.getTime() + 120 * 60000);
+      else if (expiresAtChoice === "6h") expiresAt = new Date(now.getTime() + 360 * 60000);
+      else if (expiresAtChoice === "24h") expiresAt = new Date(now.getTime() + 1440 * 60000);
+      else if (expiresAtChoice.startsWith("custom:")) {
+        expiresAt = new Date(expiresAtChoice.substring(7));
+      }
+    }
+
+    const newMeeting = new Meeting({
+      user_id: user.username,
+      meetingCode: meetingCode,
+      hostId: user.username,
+      expiresAt: expiresAt,
+      meetingPassword: password || undefined,
+      waitingRoomEnabled: !!waitingRoomEnabled,
+      status: "ACTIVE"
+    });
+
+    await newMeeting.save();
+    return res.status(httpStatus.CREATED).json(newMeeting);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const checkMeeting = async (req, res) => {
+  const { meetingCode } = req.params;
+  try {
+    const meeting = await Meeting.findOne({ meetingCode });
+    if (!meeting) {
+      return res.status(404).json({ message: "Meeting not found" });
+    }
+
+    if (meeting.expiresAt && new Date() > new Date(meeting.expiresAt)) {
+      meeting.status = "EXPIRED";
+      await meeting.save();
+    }
+
+    return res.status(200).json({
+      meetingCode: meeting.meetingCode,
+      hostId: meeting.hostId,
+      status: meeting.status,
+      passwordRequired: !!meeting.meetingPassword,
+      waitingRoomEnabled: meeting.waitingRoomEnabled,
+      isLocked: meeting.isLocked,
+      isChatDisabled: meeting.isChatDisabled,
+      isScreenShareDisabled: meeting.isScreenShareDisabled,
+      isMutedAll: meeting.isMutedAll,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const validateMeetingPassword = async (req, res) => {
+  const { meetingCode, password } = req.body;
+  try {
+    const meeting = await Meeting.findOne({ meetingCode });
+    if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+
+    if (meeting.meetingPassword === password) {
+      return res.status(200).json({ valid: true });
+    } else {
+      return res.status(400).json({ valid: false, message: "Invalid meeting password" });
+    }
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateMeetingSettings = async (req, res) => {
+  const { meetingCode, token, settings } = req.body;
+  try {
+    const user = await getUserByToken(token);
+    const meeting = await Meeting.findOne({ meetingCode });
+    if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+
+    if (meeting.hostId !== user?.username) {
+      return res.status(403).json({ message: "Only host can update settings" });
+    }
+
+    if (settings.waitingRoomEnabled !== undefined) meeting.waitingRoomEnabled = settings.waitingRoomEnabled;
+    if (settings.isLocked !== undefined) meeting.isLocked = settings.isLocked;
+    if (settings.isChatDisabled !== undefined) meeting.isChatDisabled = settings.isChatDisabled;
+    if (settings.isScreenShareDisabled !== undefined) meeting.isScreenShareDisabled = settings.isScreenShareDisabled;
+    if (settings.isMutedAll !== undefined) meeting.isMutedAll = settings.isMutedAll;
+
+    await meeting.save();
+    return res.status(200).json(meeting);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
