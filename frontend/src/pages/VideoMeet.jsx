@@ -12,7 +12,12 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  Button
+  Button,
+  Box,
+  Typography,
+  Stack,
+  Card,
+  CardContent
 } from "@mui/material";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
@@ -679,7 +684,7 @@ export default function VideoMeetComponent() {
 
   useEffect(() => {
     if (screen !== undefined) {
-      handleScreen();
+      getDislayMedia();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);

@@ -18,20 +18,18 @@ import {
   Checkbox,
   Snackbar,
   Grid,
-  Card,
-  CardContent,
   Typography,
   Box,
   Divider,
   Stack,
-  IconButton
+  IconButton,
+  Paper
 } from "@mui/material";
 import RestoreIcon from "@mui/icons-material/Restore";
 import LogoutIcon from "@mui/icons-material/Logout";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
