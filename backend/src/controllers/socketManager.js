@@ -1,4 +1,9 @@
 import { Server } from "socket.io";
+import { Transcript } from "../models/transcript.model.js";
+import { saveTranscriptSegment, getFullTranscriptText } from "../services/transcriptionService.js";
+import { generateSummary } from "../services/summaryService.js";
+import { extractTasks } from "../services/taskExtractionService.js";
+import { generateAnalytics } from "../services/analyticsService.js";
 
 let connections = {};
 let messages = {};
@@ -16,7 +21,7 @@ export const connectToSocket = (server) => {
   io.on("connection", (socket) => {
     console.log("SOMETHING CONNECTED");
 
-    socket.on("join-call", (path) => {
+    socket.on("join-call", async (path) => {
       if (connections[path] === undefined) {
         connections[path] = [];
       }
@@ -24,10 +29,7 @@ export const connectToSocket = (server) => {
 
       timeOnline[socket.id] = new Date();
 
-      // connections[path].forEach(elem => {
-      //     io.to(elem)
-      // })
-
+      // Broadcast join event
       for (let a = 0; a < connections[path].length; a++) {
         io.to(connections[path][a]).emit(
           "user-joined",
@@ -36,6 +38,7 @@ export const connectToSocket = (server) => {
         );
       }
 
+      // Sync existing chat messages
       if (messages[path] !== undefined) {
         for (let a = 0; a < messages[path].length; ++a) {
           io.to(socket.id).emit(
@@ -45,6 +48,16 @@ export const connectToSocket = (server) => {
             messages[path][a]["socket-id-sender"]
           );
         }
+      }
+
+      // Sync existing transcripts
+      try {
+        const segments = await Transcript.find({ meetingCode: path }).sort({ timestamp: 1 });
+        segments.forEach((seg) => {
+          io.to(socket.id).emit("transcription-chunk", seg.speaker, seg.text);
+        });
+      } catch (err) {
+        console.error("Error syncing previous transcripts:", err);
       }
     });
 
@@ -58,7 +71,6 @@ export const connectToSocket = (server) => {
           if (!isFound && roomValue.includes(socket.id)) {
             return [roomKey, true];
           }
-
           return [room, isFound];
         },
         ["", false]
@@ -82,9 +94,18 @@ export const connectToSocket = (server) => {
       }
     });
 
+    // Real-time transcription sync & save
+    socket.on("transcription-chunk", async (path, speaker, text) => {
+      await saveTranscriptSegment(path, speaker, text);
+      if (connections[path] !== undefined) {
+        connections[path].forEach((elem) => {
+          io.to(elem).emit("transcription-chunk", speaker, text);
+        });
+      }
+    });
+
     socket.on("disconnect", () => {
       var diffTime = Math.abs(timeOnline[socket.id] - new Date());
-
       var key;
 
       for (const [k, v] of JSON.parse(
@@ -99,11 +120,26 @@ export const connectToSocket = (server) => {
             }
 
             var index = connections[key].indexOf(socket.id);
-
             connections[key].splice(index, 1);
 
             if (connections[key].length === 0) {
-              delete connections[key];
+              const finishedRoom = key;
+              // Generate AI meeting summary, extract tasks & deadlines, compile analytics
+              getFullTranscriptText(finishedRoom)
+                .then(async (fullText) => {
+                  if (fullText && fullText.trim() !== "") {
+                    console.log(`Processing AI analysis for completed meeting: ${finishedRoom}`);
+                    await generateSummary(finishedRoom, fullText);
+                    await extractTasks(finishedRoom, fullText);
+                    await generateAnalytics(finishedRoom);
+                    console.log(`AI processing completed for meeting: ${finishedRoom}`);
+                  }
+                })
+                .catch((err) => {
+                  console.error("AI Post-meeting processing failed:", err);
+                });
+
+              delete connections[finishedRoom];
             }
           }
         }

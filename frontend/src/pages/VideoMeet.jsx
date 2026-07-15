@@ -58,6 +58,106 @@ export default function VideoMeetComponent() {
 
   const [copySnackbar, setCopySnackbar] = useState(false);
 
+  const [transcripts, setTranscripts] = useState([]);
+  const [activeTab, setActiveTab] = useState("chat");
+  const recognitionRef = useRef(null);
+
+  // Initialize Speech Recognition when microphone is active
+  useEffect(() => {
+    if (askForUsername === false && audio && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        const lastResultIndex = event.results.length - 1;
+        const text = event.results[lastResultIndex][0].transcript.trim();
+        if (text && socketRef.current) {
+          const meetingCode = window.location.pathname.substring(1);
+          socketRef.current.emit("transcription-chunk", meetingCode, username, text);
+        }
+      };
+
+      recognition.onerror = (e) => {
+        console.error("Speech recognition error:", e);
+      };
+
+      recognition.onend = () => {
+        // Restart speech recognition automatically if audio is still enabled
+        if (audio && askForUsername === false) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error("Failed to restart speech recognition:", e);
+          }
+        }
+      };
+
+      try {
+        recognition.start();
+        recognitionRef.current = recognition;
+      } catch (e) {
+        console.error("Failed to start speech recognition:", e);
+      }
+    } else {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [askForUsername, audio, username]);
+
+  const downloadTranscript = (format = "txt") => {
+    const textContent = transcripts.map(t => `[${t.speaker}]: ${t.text}`).join("\n");
+    if (format === "txt") {
+      const element = document.createElement("a");
+      const file = new Blob([textContent], { type: 'text/plain' });
+      element.href = URL.createObjectURL(file);
+      element.download = `meeting_transcript_${window.location.pathname.substring(1)}.txt`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+    } else if (format === "pdf") {
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Meeting Transcript - ${window.location.pathname.substring(1)}</title>
+            <style>
+              body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+              h1 { color: #018CCB; border-bottom: 2px solid #018CCB; padding-bottom: 10px; }
+              .chunk { margin-bottom: 15px; }
+              .speaker { font-weight: bold; color: #018CCB; }
+              .text { margin-top: 5px; color: #333; }
+            </style>
+          </head>
+          <body>
+            <h1>Meeting Transcript</h1>
+            <p><strong>Meeting Code:</strong> ${window.location.pathname.substring(1)}</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            <hr />
+            ${transcripts.map(t => `
+              <div class="chunk">
+                <span class="speaker">${t.speaker}</span>:
+                <div class="text">${t.text}</div>
+              </div>
+            `).join("")}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
   // --- (all your existing functions remain unchanged) ---
   useEffect(() => {
     getPermissions();
@@ -315,6 +415,13 @@ export default function VideoMeetComponent() {
 
       socketRef.current.on("chat-message", addMessage);
 
+      socketRef.current.on("transcription-chunk", (speaker, text) => {
+        setTranscripts((prev) => [
+          ...prev,
+          { speaker, text, timestamp: new Date() }
+        ]);
+      });
+
       socketRef.current.on("user-left", (id) => {
         setVideos((videos) => videos.filter((video) => video.socketId !== id));
       });
@@ -497,190 +604,258 @@ export default function VideoMeetComponent() {
           <div className={styles.lobbyControls}>
             <TextField
               id="outlined-basic"
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              variant="outlined"
-              size="small"
-            />
-            <Button variant="contained" onClick={connect}>
-              Connect
-            </Button>
-          </div>
-
-          <div className={styles.lobbyPreview}>
-            <video ref={localVideoref} autoPlay muted className={styles.lobbyVideo}></video>
-          </div>
-        </div>
-      ) : (
-        <div className={styles.meetContainer}>
-          
-          {/* CHAT PANEL */}
-          {showModal && (
-            <aside className={styles.chatPanel}>
-              <div className={styles.chatHeader}>
-                <h3>Chat</h3>
-                <button className={styles.closeChatBtn} onClick={closeChat}>×</button>
-              </div>
-
-              <div className={styles.chatBody}>
-                {messages.length ? (
-                  messages.map((item, index) => (
-                    <div key={index} className={styles.chatMessage}>
-                      <div className={styles.chatSender}>{item.sender}</div>
-                      <div className={styles.chatText}>{item.data}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.emptyChat}>No messages yet</div>
-                )}
-              </div>
-
-              <div className={styles.chatInput}>
-                <TextField
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type a message..."
-                  size="small"
-                  fullWidth
-                />
-                <Button variant="contained" onClick={sendMessage}>Send</Button>
-              </div>
-
-              {/* Copy Meeting Code Section */}
-              <div style={{
-                padding: "15px",
-                borderTop: "1px solid rgba(255,255,255,0.1)",
-                backgroundColor: "rgba(0,0,0,0.2)"
-              }}>
-                <div style={{ marginBottom: "8px", color: "#b0b0b0", fontSize: "12px" }}>Meeting Code</div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <TextField
-                    value={window.location.pathname.substring(1)}
-                    size="small"
-                    fullWidth
-                    InputProps={{
-                      readOnly: true,
-                      style: { color: "#fff", fontSize: "14px" }
-                    }}
-                  />
-                  <IconButton
-                    onClick={copyMeetingCode}
-                    size="small"
-                    style={{ backgroundColor: "#018CCB", color: "#fff" }}
-                  >
-                    <ContentCopyIcon fontSize="small" />
-                  </IconButton>
-                </div>
-              </div>
-            </aside>
-          )}
-
-          {/* MAIN AREA */}
-          <main className={styles.mainArea}>
-            <div className={styles.conferenceWrap}>
-
-              {/* Large Main Video */}
-              <div className={styles.primaryVideo}>
-                {videos.length > 0 ? (
-                  <video
-                    ref={(ref) => {
-                      if (ref && videos[0] && videos[0].stream) {
-                        ref.srcObject = videos[0].stream;
-                      }
-                    }}
-                    autoPlay
-                    playsInline
-                    className={styles.largeVideo}
-                  ></video>
-                ) : (
-                  <video
-                    ref={localVideoref}
-                    autoPlay
-                    muted
-                    className={styles.largeVideo}
-                  ></video>
-                )}
-              </div>
-
-              {/* Conference Grid (EXCLUDES LOCAL VIDEO) */}
-              <div className={styles.conferenceGrid}>
-                {videos
-                  .filter((v) => v.socketId !== socketIdRef.current)
-                  .map((video) => (
-                    <div key={video.socketId} className={styles.gridItem}>
-                      <video
-                        data-socket={video.socketId}
-                        ref={(ref) => {
-                          if (ref && video.stream) {
-                            ref.srcObject = video.stream;
-                          }
-                        }}
-                        autoPlay
-                        playsInline
-                        className={styles.gridVideo}
-                      ></video>
-                    </div>
-                  ))}
-              </div>
-
-            </div>
-
-            {/* BOTTOM CONTROL BAR (centered) */}
-            <div className={styles.controlBar}>
-              <IconButton onClick={copyMeetingCode} className={styles.controlButton} size="large" title="Copy Meeting Link">
-                <ContentCopyIcon />
-              </IconButton>
-
-              <IconButton onClick={handleVideo} className={styles.controlButton} size="large">
-                {video ? <VideocamIcon /> : <VideocamOffIcon />}
-              </IconButton>
-
-              <IconButton
-                onClick={handleEndCall}
-                sx={{ background: "#ff4d4d", color: "white" }}
-                size="large"
-              >
-                <CallEndIcon />
-              </IconButton>
-
-              <IconButton onClick={handleAudio} className={styles.controlButton} size="large">
-                {audio ? <MicIcon /> : <MicOffIcon />}
-              </IconButton>
-
-              {screenAvailable && (
-                <IconButton onClick={handleScreen} className={styles.controlButton} size="large">
-                  {screen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
-                </IconButton>
-              )}
-
-              <IconButton
-                onClick={() => {
-                  setModal(!showModal);
-                  if (!showModal) {
-                    setNewMessages(0);
-                  }
-                }}
-                className={styles.controlButton}
-                size="large"
-              >
-                <Badge badgeContent={newMessages} color="error">
-                  <ChatIcon />
-                </Badge>
-              </IconButton>
-            </div>
-          </main>
-        </div>
-      )}
-
-      <Snackbar
-        open={copySnackbar}
-        autoHideDuration={3000}
-        onClose={() => setCopySnackbar(false)}
-        message="Meeting link copied to clipboard!"
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
-    </div>
-  );
-}
+               label="Username"
+               value={username}
+               onChange={(e) => setUsername(e.target.value)}
+               variant="outlined"
+               size="small"
+             />
+             <Button variant="contained" onClick={connect}>
+               Connect
+             </Button>
+           </div>
+ 
+           <div className={styles.lobbyPreview}>
+             <video ref={localVideoref} autoPlay muted className={styles.lobbyVideo}></video>
+           </div>
+         </div>
+       ) : (
+         <div className={styles.meetContainer}>
+           
+           {/* CHAT & TRANSCRIPT PANEL */}
+           {showModal && (
+             <aside className={styles.chatPanel}>
+               <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                 <button
+                   onClick={() => setActiveTab("chat")}
+                   style={{
+                     flex: 1,
+                     padding: "12px",
+                     background: activeTab === "chat" ? "rgba(255,255,255,0.1)" : "transparent",
+                     color: activeTab === "chat" ? "#018CCB" : "#fff",
+                     border: "none",
+                     cursor: "pointer",
+                     fontWeight: "bold",
+                     borderBottom: activeTab === "chat" ? "2px solid #018CCB" : "none"
+                   }}
+                 >
+                   Chat
+                 </button>
+                 <button
+                   onClick={() => setActiveTab("transcript")}
+                   style={{
+                     flex: 1,
+                     padding: "12px",
+                     background: activeTab === "transcript" ? "rgba(255,255,255,0.1)" : "transparent",
+                     color: activeTab === "transcript" ? "#018CCB" : "#fff",
+                     border: "none",
+                     cursor: "pointer",
+                     fontWeight: "bold",
+                     borderBottom: activeTab === "transcript" ? "2px solid #018CCB" : "none"
+                   }}
+                 >
+                   Transcript
+                 </button>
+                 <button 
+                   className={styles.closeChatBtn} 
+                   onClick={closeChat}
+                   style={{
+                     background: "none",
+                     border: "none",
+                     color: "#fff",
+                     fontSize: "20px",
+                     cursor: "pointer",
+                     padding: "0 15px"
+                   }}
+                 >×</button>
+               </div>
+ 
+               {activeTab === "chat" ? (
+                 <>
+                   <div className={styles.chatBody}>
+                     {messages.length ? (
+                       messages.map((item, index) => (
+                         <div key={index} className={styles.chatMessage}>
+                           <div className={styles.chatSender}>{item.sender}</div>
+                           <div className={styles.chatText}>{item.data}</div>
+                         </div>
+                       ))
+                     ) : (
+                       <div className={styles.emptyChat}>No messages yet</div>
+                     )}
+                   </div>
+ 
+                   <div className={styles.chatInput}>
+                     <TextField
+                       value={message}
+                       onChange={(e) => setMessage(e.target.value)}
+                       onKeyPress={handleKeyPress}
+                       placeholder="Type a message..."
+                       size="small"
+                       fullWidth
+                     />
+                     <Button variant="contained" onClick={sendMessage}>Send</Button>
+                   </div>
+                 </>
+               ) : (
+                 <>
+                   <div className={styles.chatBody} style={{ padding: "10px" }}>
+                     {transcripts.length ? (
+                       transcripts.map((item, index) => (
+                         <div key={index} style={{ marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "6px" }}>
+                           <div style={{ fontWeight: "bold", color: "#018CCB", fontSize: "13px" }}>{item.speaker}</div>
+                           <div style={{ color: "#e0e0e0", fontSize: "14px", marginTop: "2px" }}>{item.text}</div>
+                         </div>
+                       ))
+                     ) : (
+                       <div className={styles.emptyChat}>No speech transcribed yet. Speak into your mic!</div>
+                     )}
+                   </div>
+ 
+                   <div style={{ padding: "10px", display: "flex", gap: "8px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                     <Button variant="outlined" fullWidth size="small" onClick={() => downloadTranscript("txt")} style={{ borderColor: "#018CCB", color: "#018CCB" }}>
+                       Export TXT
+                     </Button>
+                     <Button variant="contained" fullWidth size="small" onClick={() => downloadTranscript("pdf")} style={{ backgroundColor: "#018CCB" }}>
+                       Export PDF
+                     </Button>
+                   </div>
+                 </>
+               )}
+ 
+               {/* Copy Meeting Code Section */}
+               <div style={{
+                 padding: "15px",
+                 borderTop: "1px solid rgba(255,255,255,0.1)",
+                 backgroundColor: "rgba(0,0,0,0.2)"
+               }}>
+                 <div style={{ marginBottom: "8px", color: "#b0b0b0", fontSize: "12px" }}>Meeting Code</div>
+                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                   <TextField
+                     value={window.location.pathname.substring(1)}
+                     size="small"
+                     fullWidth
+                     InputProps={{
+                       readOnly: true,
+                       style: { color: "#fff", fontSize: "14px" }
+                     }}
+                   />
+                   <IconButton
+                     onClick={copyMeetingCode}
+                     size="small"
+                     style={{ backgroundColor: "#018CCB", color: "#fff" }}
+                   >
+                     <ContentCopyIcon fontSize="small" />
+                   </IconButton>
+                 </div>
+               </div>
+             </aside>
+           )}
+ 
+           {/* MAIN AREA */}
+           <main className={styles.mainArea}>
+             <div className={styles.conferenceWrap}>
+ 
+               {/* Large Main Video */}
+               <div className={styles.primaryVideo}>
+                 {videos.length > 0 ? (
+                   <video
+                     ref={(ref) => {
+                       if (ref && videos[0] && videos[0].stream) {
+                         ref.srcObject = videos[0].stream;
+                       }
+                     }}
+                     autoPlay
+                     playsInline
+                     className={styles.largeVideo}
+                   ></video>
+                 ) : (
+                   <video
+                     ref={localVideoref}
+                     autoPlay
+                     muted
+                     className={styles.largeVideo}
+                   ></video>
+                 )}
+               </div>
+ 
+               {/* Conference Grid (EXCLUDES LOCAL VIDEO) */}
+               <div className={styles.conferenceGrid}>
+                 {videos
+                   .filter((v) => v.socketId !== socketIdRef.current)
+                   .map((video) => (
+                     <div key={video.socketId} className={styles.gridItem}>
+                       <video
+                         data-socket={video.socketId}
+                         ref={(ref) => {
+                           if (ref && video.stream) {
+                             ref.srcObject = video.stream;
+                           }
+                         }}
+                         autoPlay
+                         playsInline
+                         className={styles.gridVideo}
+                       ></video>
+                     </div>
+                   ))}
+               </div>
+ 
+             </div>
+ 
+             {/* BOTTOM CONTROL BAR (centered) */}
+             <div className={styles.controlBar}>
+               <IconButton onClick={copyMeetingCode} className={styles.controlButton} size="large" title="Copy Meeting Link">
+                 <ContentCopyIcon />
+               </IconButton>
+ 
+               <IconButton onClick={handleVideo} className={styles.controlButton} size="large">
+                 {video ? <VideocamIcon /> : <VideocamOffIcon />}
+               </IconButton>
+ 
+               <IconButton
+                 onClick={handleEndCall}
+                 sx={{ background: "#ff4d4d", color: "white" }}
+                 size="large"
+               >
+                 <CallEndIcon />
+               </IconButton>
+ 
+               <IconButton onClick={handleAudio} className={styles.controlButton} size="large">
+                 {audio ? <MicIcon /> : <MicOffIcon />}
+               </IconButton>
+ 
+               {screenAvailable && (
+                 <IconButton onClick={handleScreen} className={styles.controlButton} size="large">
+                   {screen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
+                 </IconButton>
+               )}
+ 
+               <IconButton
+                 onClick={() => {
+                   setModal(!showModal);
+                   if (!showModal) {
+                     setNewMessages(0);
+                   }
+                 }}
+                 className={styles.controlButton}
+                 size="large"
+               >
+                 <Badge badgeContent={newMessages} color="error">
+                   <ChatIcon />
+                 </Badge>
+               </IconButton>
+             </div>
+           </main>
+         </div>
+       )}
+ 
+       <Snackbar
+         open={copySnackbar}
+         autoHideDuration={3000}
+         onClose={() => setCopySnackbar(false)}
+         message="Meeting link copied to clipboard!"
+         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+       />
+     </div>
+   );
+ }

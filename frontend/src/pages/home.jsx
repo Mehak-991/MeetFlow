@@ -5,6 +5,7 @@ import "../App.css";
 import { Button, TextField } from "@mui/material";
 import RestoreIcon from "@mui/icons-material/Restore";
 import LogoutIcon from "@mui/icons-material/Logout";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import { MdLightMode, MdDarkMode } from "react-icons/md";
 import { AuthContext } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -68,6 +69,22 @@ function HomeComponent() {
             onMouseLeave={(e) => (e.currentTarget.style.color = darkMode ? "#e0e0e0" : "#333")}
           >
             {darkMode ? <MdLightMode size={24} /> : <MdDarkMode size={24} />}
+          </div>
+          <div
+            onClick={() => navigate("/insights")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              cursor: "pointer",
+              color: darkMode ? "#e0e0e0" : "#333",
+              transition: "color 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#018CCB")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = darkMode ? "#e0e0e0" : "#333")}
+          >
+            <BarChartIcon />
+            <span style={{ fontSize: "16px", fontWeight: "500" }}>Insights</span>
           </div>
           <div
             onClick={() => navigate("/history")}

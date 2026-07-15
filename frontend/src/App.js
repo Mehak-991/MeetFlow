@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import VideoMeetComponent from "./pages/VideoMeet";
 import HomeComponent from "./pages/home";
 import History from "./pages/history";
+import InsightsDashboard from "./pages/insights";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
 
               <Route path="/home" s element={<HomeComponent />} />
               <Route path="/history" element={<History />} />
+              <Route path="/insights" element={<InsightsDashboard />} />
               <Route path="/:url" element={<VideoMeetComponent />} />
             </Routes>
           </AuthProvider>
