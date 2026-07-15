@@ -35,7 +35,6 @@ import CloseIcon from "@mui/icons-material/Close";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SendIcon from "@mui/icons-material/Send";
-import BarChartIcon from "@mui/icons-material/BarChart";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import server from "../environment";
@@ -82,6 +81,7 @@ export default function History() {
 
   useEffect(() => {
     fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getHistoryOfUser]);
 
   const handleMeetingClick = async (meeting) => {
