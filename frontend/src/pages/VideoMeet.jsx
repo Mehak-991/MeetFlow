@@ -2098,7 +2098,7 @@ export default function VideoMeetComponent() {
 
           {/* CHAT PANEL — animated, RIGHT side */}
           <AnimatePresence>
-            {showModal && (
+            {showModal && activeTab === "chat" && (
             <motion.aside
               key="chat-panel"
               initial={{ x: 360, opacity: 0 }}
@@ -2179,6 +2179,133 @@ export default function VideoMeetComponent() {
                   fullWidth
                 />
                 <IconButton onClick={sendMessage} disabled={isChatDisabled && !isHost} size="small" style={{ color: "#fff" }}>➤</IconButton>
+              </div>
+            </motion.aside>
+            )}
+          </AnimatePresence>
+
+          {/* AI ASSISTANT PANEL — animated, RIGHT side */}
+          <AnimatePresence>
+            {showModal && activeTab === "assistant" && (
+            <motion.aside
+              key="ai-panel"
+              initial={{ x: 360, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 360, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{
+                width: "360px",
+                flexShrink: 0,
+                backgroundColor: "#1e1e1f",
+                borderLeft: "1px solid rgba(255,255,255,0.08)",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                height: "100vh",
+                boxSizing: "border-box",
+                overflow: "hidden",
+                position: "relative",
+                zIndex: 90,
+                boxShadow: "-4px 0 24px rgba(0,0,0,0.4)"
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <span style={{ fontSize: "16px", fontWeight: "600", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>🤖</span> AI Meeting Assistant
+                </span>
+                <button
+                  onClick={() => setModal(false)}
+                  style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Suggestions / Chips */}
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+                <Button
+                  size="small"
+                  onClick={() => askAIQuestion("Summarize today's meeting.")}
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.04)",
+                    color: "#fff",
+                    textTransform: "none",
+                    borderRadius: "16px",
+                    fontSize: "11px",
+                    border: "1px solid rgba(255,255,255,0.08)"
+                  }}
+                >
+                  📝 Summarize Meeting
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => askAIQuestion("What were today's decisions?")}
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.04)",
+                    color: "#fff",
+                    textTransform: "none",
+                    borderRadius: "16px",
+                    fontSize: "11px",
+                    border: "1px solid rgba(255,255,255,0.08)"
+                  }}
+                >
+                  📌 Extract Key Decisions
+                </Button>
+              </div>
+
+              {/* Chat History */}
+              <div style={{ flex: 1, overflowY: "auto", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "12px", paddingRight: "4px" }}>
+                {aiChatHistory.length ? (
+                  aiChatHistory.map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        alignSelf: item.role === "user" ? "flex-end" : "flex-start",
+                        maxWidth: "85%",
+                        backgroundColor: item.role === "user" ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.04)",
+                        border: item.role === "user" ? "1px solid rgba(1, 140, 203, 0.3)" : "1px solid rgba(255,255,255,0.06)",
+                        padding: "10px 14px",
+                        borderRadius: "12px",
+                        fontSize: "13px",
+                        color: "#fff",
+                        wordBreak: "break-word"
+                      }}
+                    >
+                      <div style={{ fontSize: "10px", color: item.role === "user" ? "#60a5fa" : "#018CCB", fontWeight: "bold", marginBottom: "4px" }}>
+                        {item.role === "user" ? "You" : "MeetFlow AI"}
+                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.4" }}>{item.text}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ textAlign: "center", color: "#888", fontSize: "12px", marginTop: "40px", padding: "0 20px", lineHeight: "1.5" }}>
+                    Ask me anything about this meeting room, transcripts, summaries, or decisions.
+                  </div>
+                )}
+                
+                {aiLoading && (
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "10px 14px", alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: "12px" }}>
+                    <CircularProgress size={16} style={{ color: "#018CCB" }} />
+                    <span style={{ fontSize: "12px", color: "#aaa" }}>Thinking...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Input block */}
+              <div style={{ display: "flex", alignItems: "center", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "24px", padding: "4px 12px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <TextField
+                  value={aiQuestion}
+                  onChange={(e) => setAiQuestion(e.target.value)}
+                  onKeyPress={(e) => { if (e.key === "Enter") askAIQuestion(aiQuestion); }}
+                  placeholder="Ask a question..."
+                  variant="standard"
+                  InputProps={{ disableUnderline: true, style: { color: "#fff", fontSize: "13px" } }}
+                  fullWidth
+                />
+                <IconButton onClick={() => askAIQuestion(aiQuestion)} size="small" style={{ color: "#fff" }}>
+                  ➤
+                </IconButton>
               </div>
             </motion.aside>
             )}
