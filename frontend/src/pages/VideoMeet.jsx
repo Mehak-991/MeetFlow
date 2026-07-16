@@ -13,6 +13,7 @@ import {
   ListItemText,
   Divider,
   Button,
+  Checkbox,
   Box,
   Typography,
   Stack,
@@ -168,6 +169,16 @@ export default function VideoMeetComponent() {
   const [camMenuAnchor, setCamMenuAnchor] = useState(null);
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
   const [meetingDuration, setMeetingDuration] = useState(0);
+
+  // Add People Dialog Spacing & State
+  const [addPeopleOpen, setAddPeopleOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [selectedSuggestions, setSelectedSuggestions] = useState([]);
+  const suggestionsList = [
+    { name: "Mohit Kumar Singh", email: "mohit.singh@techolution.com", initials: "MS" },
+    { name: "Aarav Sharma", email: "aarav.sharma@gmail.com", initials: "AS" },
+    { name: "Mehak Verma", email: "mehak.verma@meetflow.com", initials: "MV" }
+  ];
 
   useEffect(() => {
     let interval = null;
@@ -2342,7 +2353,7 @@ export default function VideoMeetComponent() {
                 <button onClick={() => setShowPeopleModal(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>×</button>
               </div>
 
-              <Button variant="contained" onClick={copyMeetingCode} startIcon={<span>👤+</span>}
+              <Button variant="contained" onClick={() => setAddPeopleOpen(true)} startIcon={<span>👤+</span>}
                 style={{ backgroundColor: "#018CCB", color: "#fff", textTransform: "none", borderRadius: "24px", fontSize: "13px", fontWeight: "bold", marginBottom: "16px" }}
                 fullWidth>
                 Add people
@@ -2383,6 +2394,144 @@ export default function VideoMeetComponent() {
           </AnimatePresence>
         </div>
       )}
+
+      {/* Add People Dialog */}
+      <Dialog
+        open={addPeopleOpen}
+        onClose={() => {
+          setAddPeopleOpen(false);
+          setInviteEmail("");
+          setSelectedSuggestions([]);
+        }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          style: {
+            backgroundColor: "#fff",
+            color: "#111",
+            borderRadius: "16px",
+            padding: "24px",
+            boxSizing: "border-box"
+          }
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <Typography variant="h6" style={{ fontWeight: "600", fontSize: "20px", color: "#202124" }}>
+            Add people
+          </Typography>
+          <IconButton 
+            onClick={() => {
+              setAddPeopleOpen(false);
+              setInviteEmail("");
+              setSelectedSuggestions([]);
+            }}
+            size="small" 
+            style={{ color: "#5f6368" }}
+          >
+            ×
+          </IconButton>
+        </div>
+
+        {/* Invite Tab */}
+        <div style={{ display: "flex", justifyContent: "center", borderBottom: "1.5px solid #1a73e8", paddingBottom: "12px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#1a73e8", fontWeight: "600", fontSize: "14px" }}>
+            <span style={{ fontSize: "18px" }}>👤+</span> Invite
+          </div>
+        </div>
+
+        {/* Input */}
+        <TextField
+          value={inviteEmail}
+          onChange={(e) => setInviteEmail(e.target.value)}
+          placeholder="Enter name or email"
+          variant="outlined"
+          fullWidth
+          size="small"
+          InputProps={{
+            style: {
+              borderRadius: "8px",
+              fontSize: "14px",
+              color: "#202124"
+            }
+          }}
+          style={{ marginBottom: "20px" }}
+        />
+
+        {/* Suggestions Title */}
+        <Typography variant="subtitle2" style={{ fontWeight: "600", color: "#5f6368", marginBottom: "12px", fontSize: "12px" }}>
+          Suggestions
+        </Typography>
+
+        {/* Suggestions list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
+          {suggestionsList.map((contact) => {
+            const isChecked = selectedSuggestions.includes(contact.email);
+            return (
+              <div 
+                key={contact.email} 
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    backgroundColor: "#1a73e8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "13px",
+                    fontWeight: "bold",
+                    color: "#fff"
+                  }}>
+                    {contact.initials}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "500", color: "#202124" }}>{contact.name}</div>
+                    <div style={{ fontSize: "12px", color: "#5f6368" }}>{contact.email}</div>
+                  </div>
+                </div>
+                <Checkbox
+                  checked={isChecked}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedSuggestions([...selectedSuggestions, contact.email]);
+                    } else {
+                      setSelectedSuggestions(selectedSuggestions.filter(email => email !== contact.email));
+                    }
+                  }}
+                  color="primary"
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Action Button */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button
+            variant="contained"
+            disabled={!inviteEmail.trim() && selectedSuggestions.length === 0}
+            onClick={() => {
+              const targets = inviteEmail.trim() ? [inviteEmail, ...selectedSuggestions] : selectedSuggestions;
+              alert(`Invitation sent successfully to: ${targets.join(", ")}`);
+              setAddPeopleOpen(false);
+              setInviteEmail("");
+              setSelectedSuggestions([]);
+            }}
+            style={{
+              backgroundColor: (!inviteEmail.trim() && selectedSuggestions.length === 0) ? "rgba(0,0,0,0.12)" : "#1a73e8",
+              color: (!inviteEmail.trim() && selectedSuggestions.length === 0) ? "rgba(0,0,0,0.26)" : "#fff",
+              textTransform: "none",
+              borderRadius: "20px",
+              padding: "6px 20px",
+              fontWeight: "600"
+            }}
+          >
+            Send email
+          </Button>
+        </div>
+      </Dialog>
 
       {/* SaaS Settings Dialog */}
       <Dialog 
