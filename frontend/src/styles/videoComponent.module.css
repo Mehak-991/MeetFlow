@@ -83,29 +83,34 @@
 /* MEET LAYOUT */
 .meetContainer {
   display: flex;
-  gap: 18px;
-  width: 100%;
-  min-height: 100vh;
+  flex-direction: row;
+  gap: 0;
+  width: 100vw;
+  height: 100vh;
   box-sizing: border-box;
-  padding: 18px;
+  padding: 0;
   align-items: stretch;
   position: relative;
+  overflow: hidden;
+  background: #111113;
 }
 
-/* CHAT PANEL (left) */
+/* SIDE PANEL (chat / people) — width controlled by Framer Motion */
 .chatPanel {
-  width: 320px;
-  background: rgba(30, 30, 31, 0.95);
+  width: 360px;
+  flex-shrink: 0;
+  background: #1e1e1f;
   color: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  min-height: 420px;
-  max-height: calc(100vh - 40px);
-  backdrop-filter: blur(10px);
+  gap: 0;
+  height: 100vh;
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 90;
 }
 
 .chatHeader {
@@ -234,56 +239,90 @@
   opacity: 1;
 }
 
-/* MAIN AREA (center) */
+/* MAIN AREA (center) — width animated by Framer Motion */
 .mainArea {
   flex: 1;
-  background: linear-gradient(180deg, #111113, #0f0f10);
-  border-radius: 12px;
-  padding: 18px;
-  padding-bottom: 120px;
+  min-width: 0;
+  background: #111113;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  align-items: stretch;
+  justify-content: stretch;
   position: relative;
-  min-height: 520px;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Fullscreen: video area covers entire viewport */
+.fullscreenMain {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 200;
+  background: #000 !important;
 }
 
 /* conference wrap */
 .conferenceWrap {
   width: 100%;
-  max-width: 1080px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 18px;
+  align-items: stretch;
+  justify-content: stretch;
+  position: relative;
+  padding: 80px 180px 110px 180px;
+  box-sizing: border-box;
 }
+
+@media (max-width: 1024px) {
+  .conferenceWrap {
+    padding: 80px 48px 110px 48px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .conferenceWrap {
+    padding: 72px 16px 110px 16px !important;
+  }
+}
+
+
 
 /* primary large video */
 .primaryVideo {
   width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
+  overflow: hidden;
 }
 
 .largeVideo {
-  width: 720px;
-  max-width: 100%;
-  height: 420px;
+  width: 100%;
+  height: 100%;
   background: #000;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 2px solid rgba(255,255,255,0.06);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+  border-radius: 0;
+  object-fit: contain;
+  border: none;
+  box-shadow: none;
 }
 
 /* conference grid smaller streams at bottom of center area */
 .conferenceGrid {
-  width: 100%;
+  position: absolute;
+  top: 20px;
+  right: 20px;
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
+  z-index: 80;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  pointer-events: auto;
 }
 
 .gridItem {
@@ -304,15 +343,15 @@
 /* local thumb */
 .localThumb {
   position: absolute;
-  left: 36px;
-  bottom: 140px;
+  left: 20px;
+  bottom: 100px;
   width: 160px;
   height: 110px;
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid rgba(255,255,255,0.06);
   box-shadow: 0 8px 20px rgba(0,0,0,0.6);
-  z-index: 50;
+  z-index: 90;
 }
 
 .localVideo {
@@ -381,12 +420,20 @@
   .chatPanel {
     display: none; /* hide chat on smaller screens (mobile) */
   }
-  .largeVideo {
-    height: 320px;
+  .conferenceGrid {
+    position: absolute;
+    top: auto;
+    bottom: 100px;
+    right: 20px;
+    left: auto;
+    flex-direction: row;
+    max-width: calc(100vw - 40px);
+    max-height: 110px;
+    overflow-x: auto;
   }
   .localThumb {
-    left: 18px;
-    bottom: 120px;
+    left: 20px;
+    bottom: 200px;
     width: 120px;
     height: 90px;
   }
@@ -398,15 +445,135 @@
 
 @media (max-width: 600px) {
   .meetContainer {
-    padding: 12px;
+    padding: 0;
   }
   .mainArea {
-    padding: 12px;
-  }
-  .largeVideo {
-    height: 240px;
+    padding: 0;
   }
   .conferenceGrid {
     gap: 8px;
   }
 }
+
+/* PRE-JOIN SCREEN UPGRADES */
+.preJoinContainer {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: #111113;
+  color: #fff;
+  gap: 60px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 960px) {
+  .preJoinContainer {
+    grid-template-columns: 1fr;
+    padding: 24px;
+    gap: 32px;
+  }
+}
+
+.preJoinLeft {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.preJoinPreview {
+  width: 100%;
+  max-width: 640px;
+  height: 380px;
+  background: #1e1e1f;
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.preJoinVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: filter 0.3s ease;
+}
+
+.preJoinLeftControls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 16px;
+  border-radius: 30px;
+  backdrop-filter: blur(10px);
+}
+
+.preJoinRight {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.preJoinTitle {
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.preJoinSubtitle {
+  font-size: 16px;
+  color: #aaa;
+  margin: 0;
+}
+
+.deviceSelectorCard {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.micIndicatorWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.micIndicatorTrack {
+  flex: 1;
+  height: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.micIndicatorFill {
+  height: 100%;
+  background: #018CCB;
+  transition: width 0.08s ease;
+}
+
+.joinButtonRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+

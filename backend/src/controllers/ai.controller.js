@@ -205,7 +205,7 @@ export const getDashboardInsights = async (req, res) => {
 };
 
 export const createScheduledMeeting = async (req, res) => {
-  const { token, expiresAtChoice, password, waitingRoomEnabled } = req.body;
+  const { token, expiresAtChoice, password, waitingRoomEnabled, meetingTitle, description } = req.body;
   try {
     const user = await getUserByToken(token);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
@@ -217,7 +217,7 @@ export const createScheduledMeeting = async (req, res) => {
     }
 
     let expiresAt = null;
-    if (expiresAtChoice !== "never") {
+    if (expiresAtChoice && expiresAtChoice !== "never") {
       const now = new Date();
       if (expiresAtChoice === "30m") expiresAt = new Date(now.getTime() + 30 * 60000);
       else if (expiresAtChoice === "1h") expiresAt = new Date(now.getTime() + 60 * 60000);
@@ -226,8 +226,13 @@ export const createScheduledMeeting = async (req, res) => {
       else if (expiresAtChoice === "24h") expiresAt = new Date(now.getTime() + 1440 * 60000);
       else if (expiresAtChoice.startsWith("custom:")) {
         expiresAt = new Date(expiresAtChoice.substring(7));
+      } else {
+        expiresAt = new Date(expiresAtChoice);
       }
     }
+
+    const hostHeader = req.headers.host || "localhost:3000";
+    const meetingLink = `http://${hostHeader}/meeting/${meetingCode}`;
 
     const newMeeting = new Meeting({
       user_id: user.username,
@@ -236,7 +241,13 @@ export const createScheduledMeeting = async (req, res) => {
       expiresAt: expiresAt,
       meetingPassword: password || undefined,
       waitingRoomEnabled: !!waitingRoomEnabled,
-      status: "ACTIVE"
+      status: "ACTIVE",
+      meetingId: meetingCode,
+      meetingLink: meetingLink,
+      meetingTitle: meetingTitle || "MeetFlow AI Call",
+      description: description || "",
+      password: password || undefined,
+      createdAt: new Date()
     });
 
     await newMeeting.save();

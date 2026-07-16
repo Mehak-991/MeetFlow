@@ -23,7 +23,8 @@ import {
   Divider,
   Stack,
   IconButton,
-  Paper
+  Paper,
+  Menu
 } from "@mui/material";
 import RestoreIcon from "@mui/icons-material/Restore";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -52,32 +53,53 @@ function HomeComponent() {
   // Create meeting states
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [expiry, setExpiry] = useState("2h");
+  const [customDate, setCustomDate] = useState("");
   const [password, setPassword] = useState("");
   const [waitingRoom, setWaitingRoom] = useState(false);
   const [recurring, setRecurring] = useState(false);
 
-  // Invite states
+  // New scheduler details
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [guests, setGuests] = useState("");
+  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+
+  // Dropdown anchor
+  const [menuAnchor, setMenuAnchor] = useState(null);
+
+  // Invite success states
   const [inviteOpen, setInviteOpen] = useState(false);
   const [createdMeeting, setCreatedMeeting] = useState(null);
 
   const [toastMessage, setToastMessage] = useState("");
   const [toastOpen, setToastOpen] = useState(false);
 
+  const handleOpenDropdown = (event) => setMenuAnchor(event.currentTarget);
+  const handleCloseDropdown = () => setMenuAnchor(null);
+
   const handleJoinVideoCall = async () => {
     if (!meetingCode.trim()) return;
-    await addToUserHistory(meetingCode);
-    navigate(`/${meetingCode}`);
+    let cleanCode = meetingCode.trim();
+    if (cleanCode.includes("/meeting/")) {
+      cleanCode = cleanCode.split("/meeting/")[1];
+    } else if (cleanCode.includes("/")) {
+      cleanCode = cleanCode.substring(cleanCode.lastIndexOf("/") + 1);
+    }
+    await addToUserHistory(cleanCode);
+    navigate(`/${cleanCode}`);
   };
 
   const handleCreateInstantMeeting = async () => {
+    handleCloseDropdown();
     try {
       const token = localStorage.getItem("token");
-      // Instant meeting: 24h expiration, no password, waiting room disabled
       const res = await client.post("/create-scheduled-meeting", {
         token,
         expiresAtChoice: "24h",
         password: "",
-        waitingRoomEnabled: false
+        waitingRoomEnabled: false,
+        meetingTitle: "Instant MeetFlow Call",
+        description: "Created instantly via dashboard."
       });
       await addToUserHistory(res.data.meetingCode);
       navigate(`/${res.data.meetingCode}`);
@@ -87,14 +109,38 @@ function HomeComponent() {
     }
   };
 
-  const handleCreateScheduledMeeting = async () => {
+  const handleCreateMeetingLink = async () => {
+    handleCloseDropdown();
     try {
       const token = localStorage.getItem("token");
       const res = await client.post("/create-scheduled-meeting", {
         token,
-        expiresAtChoice: recurring ? "never" : expiry,
+        expiresAtChoice: "24h",
+        password: "",
+        waitingRoomEnabled: false,
+        meetingTitle: "Quick Meeting Link",
+        description: "Shared quickly via dashboard."
+      });
+      setCreatedMeeting(res.data);
+      setInviteOpen(true);
+      await addToUserHistory(res.data.meetingCode);
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to generate meeting link.");
+    }
+  };
+
+  const handleCreateScheduledMeeting = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const expiryChoice = recurring ? "never" : (customDate ? customDate : expiry);
+      const res = await client.post("/create-scheduled-meeting", {
+        token,
+        expiresAtChoice: expiryChoice,
         password,
-        waitingRoomEnabled: waitingRoom
+        waitingRoomEnabled: waitingRoom,
+        meetingTitle: meetingTitle || "Scheduled MeetFlow Meeting",
+        description
       });
       setCreatedMeeting(res.data);
       setSchedulerOpen(false);
@@ -109,8 +155,8 @@ function HomeComponent() {
   const generateICS = () => {
     if (!createdMeeting) return;
     const code = createdMeeting.meetingCode;
-    const title = `MeetFlow Meeting - ${code}`;
-    const description = `Join the meeting at: ${window.location.origin}/${code}`;
+    const title = createdMeeting.meetingTitle || `MeetFlow Meeting - ${code}`;
+    const desc = createdMeeting.description || `Join the meeting at: ${window.location.origin}/${code}`;
     const now = new Date();
     const startDateStr = now.toISOString().replace(/-|:|\.\d\d\d/g, "");
     const endDateStr = new Date(now.getTime() + 60 * 60000).toISOString().replace(/-|:|\.\d\d\d/g, "");
@@ -120,7 +166,7 @@ VERSION:2.0
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SUMMARY:${title}
-DESCRIPTION:${description}
+DESCRIPTION:${desc}
 DTSTART:${startDateStr}
 DTEND:${endDateStr}
 LOCATION:${window.location.origin}/${code}
@@ -145,7 +191,7 @@ END:VCALENDAR`;
 
   const handleCopyInvite = () => {
     if (!createdMeeting) return;
-    const link = `${window.location.origin}/${createdMeeting.meetingCode}`;
+    const link = `${window.location.origin}/meeting/${createdMeeting.meetingCode}`;
     const text = `Join my MeetFlow Meeting!\n\nLink: ${link}\nMeeting Code: ${createdMeeting.meetingCode}${createdMeeting.meetingPassword ? `\nPassword: ${createdMeeting.meetingPassword}` : ''}`;
     navigator.clipboard.writeText(text);
     showToast("Invitation copied to clipboard!");
@@ -153,10 +199,45 @@ END:VCALENDAR`;
 
   const handleEmailInvite = () => {
     if (!createdMeeting) return;
-    const link = `${window.location.origin}/${createdMeeting.meetingCode}`;
-    const subject = encodeURIComponent("MeetFlow Meeting Invitation");
+    const link = `${window.location.origin}/meeting/${createdMeeting.meetingCode}`;
+    const subject = encodeURIComponent(`Invitation: ${createdMeeting.meetingTitle || "MeetFlow Meeting"}`);
     const body = encodeURIComponent(`Hello,\n\nPlease join my MeetFlow Meeting.\n\nLink: ${link}\nMeeting Code: ${createdMeeting.meetingCode}${createdMeeting.meetingPassword ? `\nPassword: ${createdMeeting.meetingPassword}` : ''}\n\nSee you there!`);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  const shareSocial = (platform) => {
+    if (!createdMeeting) return;
+    const link = encodeURIComponent(`${window.location.origin}/meeting/${createdMeeting.meetingCode}`);
+    const text = encodeURIComponent(`Join my MeetFlow AI Meeting: ${createdMeeting.meetingTitle || ''}`);
+    let url = "";
+
+    if (platform === "whatsapp") {
+      url = `https://api.whatsapp.com/send?text=${text}%20${link}`;
+    } else if (platform === "telegram") {
+      url = `https://t.me/share/url?url=${link}&text=${text}`;
+    } else if (platform === "linkedin") {
+      url = `https://www.linkedin.com/sharing/share-offsite/?url=${link}`;
+    }
+    
+    if (url) window.open(url, "_blank");
+  };
+
+  const handleNativeShare = async () => {
+    if (!createdMeeting) return;
+    const link = `${window.location.origin}/meeting/${createdMeeting.meetingCode}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: createdMeeting.meetingTitle || "MeetFlow Meeting",
+          text: `Join my MeetFlow Meeting!`,
+          url: link
+        });
+      } catch (err) {
+        console.error("Native share failed:", err);
+      }
+    } else {
+      handleCopyInvite();
+    }
   };
 
   const handleLogout = () => {
@@ -196,31 +277,50 @@ END:VCALENDAR`;
         </Box>
 
         {/* Navigation Items */}
-        <Stack direction="row" spacing={3} alignItems="center">
+        <Stack direction="row" spacing={2} alignItems="center">
           <IconButton onClick={toggleTheme} sx={{ color: darkMode ? "#e0e0e0" : "#333" }}>
-            {darkMode ? <MdLightMode size={24} /> : <MdDarkMode size={24} />}
+            {darkMode ? <MdLightMode size={20} /> : <MdDarkMode size={20} />}
           </IconButton>
           
           <Button
-            onClick={() => navigate("/insights")}
-            startIcon={<BarChartIcon />}
-            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500 }}
+            onClick={() => navigate("/home")}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
           >
-            Insights
+            Dashboard
+          </Button>
+
+          <Button
+            onClick={() => setSchedulerOpen(true)}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
+          >
+            Meetings
+          </Button>
+
+          <Button
+            onClick={() => navigate("/insights")}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
+          >
+            AI Assistant
           </Button>
 
           <Button
             onClick={() => navigate("/history")}
-            startIcon={<RestoreIcon />}
-            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500 }}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
           >
             History
           </Button>
 
           <Button
+            onClick={() => navigate("/insights")}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
+          >
+            Analytics
+          </Button>
+
+          <Button
             onClick={handleLogout}
             startIcon={<LogoutIcon />}
-            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500 }}
+            sx={{ color: darkMode ? "#e0e0e0" : "#333", textTransform: "none", fontWeight: 500, fontSize: "14px" }}
           >
             Logout
           </Button>
@@ -231,8 +331,8 @@ END:VCALENDAR`;
       <Grid container sx={{ flexGrow: 1, p: { xs: 4, md: 8 }, alignItems: "center" }} spacing={6}>
         <Grid item xs={12} md={6}>
           <Box sx={{ maxWidth: "520px" }}>
-            <Typography variant="h3" sx={{ fontWeight: 600, mb: 2, fontSize: { xs: "2.2rem", md: "2.8rem" }, color: "#018CCB" }}>
-              Premium video meetings. Now free for everyone.
+            <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, fontSize: { xs: "2.2rem", md: "2.9rem" }, color: "#018CCB" }}>
+              Video meetings powered by AI
             </Typography>
             <Typography variant="body1" sx={{ color: darkMode ? "#b0b0b0" : "#5f6368", mb: 5, fontSize: "1.1rem", lineHeight: 1.6 }}>
               We re-engineered MeetFlow to deliver production-grade meeting intelligence, real-time speech transcription, vector RAG search, and scheduling.
@@ -243,7 +343,7 @@ END:VCALENDAR`;
               <Button
                 variant="contained"
                 startIcon={<VideoCallIcon />}
-                onClick={() => setSchedulerOpen(true)}
+                onClick={handleOpenDropdown}
                 sx={{
                   backgroundColor: "#018CCB",
                   padding: "12px 24px",
@@ -255,6 +355,26 @@ END:VCALENDAR`;
               >
                 New Meeting
               </Button>
+
+              {/* NEW MEETING DROPDOWN */}
+              <Menu
+                anchorEl={menuAnchor}
+                open={Boolean(menuAnchor)}
+                onClose={handleCloseDropdown}
+                PaperProps={{
+                  style: {
+                    backgroundColor: darkMode ? "#222" : "#fff",
+                    color: darkMode ? "#fff" : "#333",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px"
+                  }
+                }}
+              >
+                <MenuItem onClick={handleCreateMeetingLink}>🔗 Create Meeting Link</MenuItem>
+                <MenuItem onClick={handleCreateInstantMeeting}>⚡ Start Instant Meeting</MenuItem>
+                <MenuItem onClick={() => { setSchedulerOpen(true); setRecurring(false); handleCloseDropdown(); }}>📅 Schedule Meeting</MenuItem>
+                <MenuItem onClick={() => { setSchedulerOpen(true); setRecurring(true); handleCloseDropdown(); }}>🔄 Create Recurring Meeting</MenuItem>
+              </Menu>
 
               <Stack direction="row" spacing={1} sx={{ flexGrow: 1 }}>
                 <TextField
@@ -318,32 +438,88 @@ END:VCALENDAR`;
       </Grid>
 
       {/* Scheduler Modal */}
-      <Dialog open={schedulerOpen} onClose={() => setSchedulerOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={schedulerOpen} onClose={() => setSchedulerOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: "bold", color: "#018CCB" }}>Schedule a New Meeting</DialogTitle>
         <DialogContent>
-          <Stack spacing={3} sx={{ mt: 1.5 }}>
+          <Stack spacing={2.5} sx={{ mt: 1.5 }}>
+            <TextField
+              label="Meeting Name / Title"
+              fullWidth
+              value={meetingTitle}
+              onChange={(e) => setMeetingTitle(e.target.value)}
+              placeholder="e.g. Weekly Sync"
+            />
+
+            <TextField
+              label="Description"
+              fullWidth
+              multiline
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. AI project status alignment."
+            />
+
             <FormControlLabel
               control={<Checkbox checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />}
               label="Recurring Meeting (Never Expires)"
             />
 
             {!recurring && (
-              <FormControl fullWidth>
-                <InputLabel id="expiry-label">Meeting Expiration</InputLabel>
-                <Select
-                  labelId="expiry-label"
-                  value={expiry}
-                  label="Meeting Expiration"
-                  onChange={(e) => setExpiry(e.target.value)}
-                >
-                  <MenuItem value="30m">30 Minutes</MenuItem>
-                  <MenuItem value="1h">1 Hour</MenuItem>
-                  <MenuItem value="2h">2 Hours</MenuItem>
-                  <MenuItem value="6h">6 Hours</MenuItem>
-                  <MenuItem value="24h">24 Hours</MenuItem>
-                </Select>
-              </FormControl>
+              <>
+                <FormControl fullWidth>
+                  <InputLabel id="expiry-label">Meeting Expiration</InputLabel>
+                  <Select
+                    labelId="expiry-label"
+                    value={expiry}
+                    label="Meeting Expiration"
+                    onChange={(e) => setExpiry(e.target.value)}
+                  >
+                    <MenuItem value="30m">30 Minutes</MenuItem>
+                    <MenuItem value="1h">1 Hour</MenuItem>
+                    <MenuItem value="2h">2 Hours</MenuItem>
+                    <MenuItem value="6h">6 Hours</MenuItem>
+                    <MenuItem value="24h">24 Hours</MenuItem>
+                    <MenuItem value="custom">Custom Date & Time</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {expiry === "custom" && (
+                  <TextField
+                    label="Select Expiration Date & Time"
+                    type="datetime-local"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                  />
+                )}
+              </>
             )}
+
+            <TextField
+              label="Guest Email Invites (Comma separated)"
+              fullWidth
+              value={guests}
+              onChange={(e) => setGuests(e.target.value)}
+              placeholder="user1@domain.com, user2@domain.com"
+            />
+
+            <FormControl fullWidth>
+              <InputLabel id="timezone-label">Timezone</InputLabel>
+              <Select
+                labelId="timezone-label"
+                value={timezone}
+                label="Timezone"
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                <MenuItem value="UTC">UTC (Coordinated Universal Time)</MenuItem>
+                <MenuItem value="America/New_York">America/New_York (EST)</MenuItem>
+                <MenuItem value="Europe/London">Europe/London (GMT)</MenuItem>
+                <MenuItem value="Asia/Kolkata">Asia/Kolkata (IST)</MenuItem>
+                <MenuItem value="Asia/Tokyo">Asia/Tokyo (JST)</MenuItem>
+              </Select>
+            </FormControl>
 
             <TextField
               label="Optional Password"
@@ -367,24 +543,54 @@ END:VCALENDAR`;
         </DialogActions>
       </Dialog>
 
-      {/* Share / Invite Modal */}
+      {/* Share / Invite Success Modal */}
       <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} maxWidth="sm" fullWidth>
         {createdMeeting && (
           <>
-            <DialogTitle sx={{ fontWeight: "bold", color: "#018CCB" }}>Here's your meeting link</DialogTitle>
+            <DialogTitle sx={{ fontWeight: "bold", color: "#018CCB" }}>Here's your meeting details</DialogTitle>
             <DialogContent>
               <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                 Copy this link and send it to people you want to meet with. Make sure to note down the password if you set one.
               </Typography>
 
-              <Paper sx={{ p: 2, display: "flex", alignItems: "center", gap: 1, backgroundColor: "#f5f5f5", border: "1px dashed #ccc", mb: 3 }}>
-                <Typography sx={{ flexGrow: 1, fontWeight: "bold", fontFamily: "monospace" }}>
-                  {window.location.origin}/{createdMeeting.meetingCode}
+              <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 0.5 }}>
+                Title: {createdMeeting.meetingTitle || "MeetFlow AI Call"}
+              </Typography>
+              {createdMeeting.expiresAt ? (
+                <Typography variant="caption" color="error" sx={{ display: "block", mb: 2 }}>
+                  Expires At: {new Date(createdMeeting.expiresAt).toLocaleString()}
                 </Typography>
-                <IconButton onClick={handleCopyInvite} size="small" sx={{ backgroundColor: "#e0e0e0" }}>
+              ) : (
+                <Typography variant="caption" color="success" sx={{ display: "block", mb: 2 }}>
+                  Never Expires (Recurring)
+                </Typography>
+              )}
+
+              <Paper sx={{ p: 2, display: "flex", alignItems: "center", gap: 1, backgroundColor: "#f5f5f5", border: "1px dashed #ccc", mb: 3 }}>
+                <Typography sx={{ flexGrow: 1, fontWeight: "bold", fontFamily: "monospace", color: "#333", wordBreak: "break-all" }}>
+                  {window.location.origin}/meeting/{createdMeeting.meetingCode}
+                </Typography>
+                <IconButton onClick={handleCopyInvite} size="small" sx={{ backgroundColor: "#e0e0e0" }} title="Copy Link">
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Paper>
+
+              {/* QUICK SHARE ACTIONS */}
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: "bold" }}>Share Invitation</Typography>
+              <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+                <Button size="small" variant="outlined" onClick={() => shareSocial("whatsapp")} sx={{ textTransform: "none", color: "#25d366", borderColor: "#25d366" }}>
+                  WhatsApp
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => shareSocial("telegram")} sx={{ textTransform: "none", color: "#0088cc", borderColor: "#0088cc" }}>
+                  Telegram
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => shareSocial("linkedin")} sx={{ textTransform: "none", color: "#0077b5", borderColor: "#0077b5" }}>
+                  LinkedIn
+                </Button>
+                <Button size="small" variant="outlined" onClick={handleNativeShare} sx={{ textTransform: "none", color: "#018CCB", borderColor: "#018CCB" }}>
+                  System Share
+                </Button>
+              </Box>
 
               <Stack direction="row" spacing={2}>
                 <Button variant="outlined" fullWidth startIcon={<FileDownloadIcon />} onClick={generateICS}>
@@ -396,11 +602,12 @@ END:VCALENDAR`;
               </Stack>
             </DialogContent>
             <DialogActions>
+              <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
               <Button onClick={() => {
                 setInviteOpen(false);
                 navigate(`/${createdMeeting.meetingCode}`);
               }} variant="contained" sx={{ backgroundColor: "#018CCB" }}>
-                Join Meeting Now
+                Open Meeting
               </Button>
             </DialogActions>
           </>

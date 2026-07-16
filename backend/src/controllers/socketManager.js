@@ -258,6 +258,26 @@ export const connectToSocket = (server) => {
       }
     });
 
+    socket.on("raise-hand", (meetingCode, raised) => {
+      if (connections[meetingCode] !== undefined) {
+        connections[meetingCode].forEach((elem) => {
+          if (elem !== socket.id) {
+            io.to(elem).emit("user-raised-hand", socket.id, raised, socketUsernames[socket.id]);
+          }
+        });
+      }
+    });
+
+    socket.on("send-emoji", (meetingCode, emoji) => {
+      if (connections[meetingCode] !== undefined) {
+        connections[meetingCode].forEach((elem) => {
+          if (elem !== socket.id) {
+            io.to(elem).emit("emoji-received", emoji, socketUsernames[socket.id]);
+          }
+        });
+      }
+    });
+
     socket.on("transcription-chunk", async (path, speaker, text) => {
       const urlParts = path.split("/");
       const meetingCode = urlParts[urlParts.length - 1];

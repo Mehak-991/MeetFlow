@@ -17,7 +17,16 @@ import {
   Typography,
   Stack,
   Card,
-  CardContent
+  CardContent,
+  Select,
+  MenuItem,
+  FormControl,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Paper,
+  Menu
 } from "@mui/material";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
@@ -28,7 +37,19 @@ import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import StopScreenShareIcon from "@mui/icons-material/StopScreenShare";
 import ChatIcon from "@mui/icons-material/Chat";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import BlurOnIcon from "@mui/icons-material/BlurOn";
+import BlurOffIcon from "@mui/icons-material/BlurOff";
+import HearingIcon from "@mui/icons-material/Hearing";
+import PresentToAllIcon from "@mui/icons-material/PresentToAll";
+import LaptopIcon from "@mui/icons-material/Laptop";
+import InfoIcon from "@mui/icons-material/Info";
+import ShareIcon from "@mui/icons-material/Share";
+import SettingsIcon from "@mui/icons-material/Settings";
+import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import axios from "axios";
+import { motion, AnimatePresence } from "framer-motion";
 import server from "../environment";
 
 import styles from "../styles/videoComponent.module.css";
@@ -57,7 +78,12 @@ export default function VideoMeetComponent() {
 
   let [screen, setScreen] = useState();
 
-  let [showModal, setModal] = useState(true);
+  let [showModal, setModal] = useState(false);
+  const [showPeopleModal, setShowPeopleModal] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Derived: any side panel open?
+  const isPanelOpen = showModal || showPeopleModal;
 
   let [screenAvailable, setScreenAvailable] = useState();
 
@@ -98,6 +124,75 @@ export default function VideoMeetComponent() {
   const [isChatDisabled, setIsChatDisabled] = useState(false);
   const [isScreenShareDisabled, setIsScreenShareDisabled] = useState(false);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
+
+  // Pre-join Device & Audio Filtering states
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [selectedVideo, setSelectedVideo] = useState("");
+  const [selectedAudio, setSelectedAudio] = useState("");
+  const [backgroundBlur, setBackgroundBlur] = useState(false);
+  const [noiseSuppression, setNoiseSuppression] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [companionMode, setCompanionMode] = useState(false);
+  const [presentOnly, setPresentOnly] = useState(false);
+
+  // Web Audio refs for real-time mic test & noise suppression filter
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const dataArrayRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const audioSourceRef = useRef(null);
+
+  // AI Q&A and Meeting Intelligence States
+  const [aiChatHistory, setAiChatHistory] = useState([]);
+  const [aiQuestion, setAiQuestion] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Google Meet UI Interactivity States
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState({});
+  const [showCaptions, setShowCaptions] = useState(false);
+  const [captionText, setCaptionText] = useState("");
+  const [floatingEmojis, setFloatingEmojis] = useState([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const pickerTimerRef = useRef(null);
+
+  // Settings Dialog Panel States
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("audio");
+  const [mirrorMode, setMirrorMode] = useState(false);
+  const [hdMode, setHdMode] = useState(true);
+  const [echoCancellation, setEchoCancellation] = useState(true);
+  const [layoutMode, setLayoutMode] = useState("comfortable");
+  const [micMenuAnchor, setMicMenuAnchor] = useState(null);
+  const [camMenuAnchor, setCamMenuAnchor] = useState(null);
+  const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
+  const [meetingDuration, setMeetingDuration] = useState(0);
+
+  useEffect(() => {
+    let interval = null;
+    if (!askForUsername) {
+      interval = setInterval(() => {
+        setMeetingDuration(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [askForUsername]);
+
+  // Sync isFullscreen state with browser fullscreen changes (e.g., Escape key)
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
+
+  const formatDuration = (sec) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
 
   const meetingCode = window.location.pathname.substring(1);
 
@@ -140,6 +235,130 @@ export default function VideoMeetComponent() {
     }
   }, [askForUsername, username, meetingCode]);
 
+  // Enumerate active devices
+  const getDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevs = devices.filter(d => d.kind === "videoinput");
+      const audioDevs = devices.filter(d => d.kind === "audioinput");
+      setVideoDevices(videoDevs);
+      setAudioDevices(audioDevs);
+      if (videoDevs.length && !selectedVideo) setSelectedVideo(videoDevs[0].deviceId);
+      if (audioDevs.length && !selectedAudio) setSelectedAudio(audioDevs[0].deviceId);
+    } catch (e) {
+      console.error("Error enumerating devices:", e);
+    }
+  };
+
+  useEffect(() => {
+    getDevices();
+    navigator.mediaDevices.ondevicechange = getDevices;
+  }, []);
+
+  const handleDeviceChange = async (videoDeviceId, audioDeviceId) => {
+    try {
+      if (window.localStream) {
+        window.localStream.getTracks().forEach(track => track.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : video,
+        audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : audio
+      });
+      window.localStream = stream;
+      if (localVideoref.current) {
+        localVideoref.current.srcObject = stream;
+      }
+    } catch (e) {
+      console.error("Failed to switch devices:", e);
+    }
+  };
+
+  // Monitor Mic Input level for mic testing
+  useEffect(() => {
+    if (askForUsername && audio && window.localStream) {
+      try {
+        const audioTracks = window.localStream.getAudioTracks();
+        if (audioTracks.length === 0) return;
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContextClass();
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        let sourceNode = audioCtx.createMediaStreamSource(window.localStream);
+        
+        if (noiseSuppression) {
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = "highpass";
+          filter.frequency.value = 150; // Filter low-frequency static noise
+          sourceNode.connect(filter);
+          filter.connect(analyser);
+        } else {
+          sourceNode.connect(analyser);
+        }
+
+        audioContextRef.current = audioCtx;
+        analyserRef.current = analyser;
+        dataArrayRef.current = dataArray;
+        audioSourceRef.current = sourceNode;
+
+        const draw = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArrayRef.current[i];
+          }
+          const average = sum / bufferLength;
+          setMicLevel(average);
+          animationFrameRef.current = requestAnimationFrame(draw);
+        };
+        draw();
+      } catch (err) {
+        console.error("Audio Context setup failed:", err);
+      }
+    } else {
+      cleanupAudioContext();
+    }
+
+    return () => cleanupAudioContext();
+  }, [askForUsername, audio, noiseSuppression]);
+
+  const cleanupAudioContext = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  };
+
+  // Inject keyframes for floating emojis and hand bounces dynamically on mount
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      @keyframes floatUp {
+        0% { transform: translateY(0) scale(0.6); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 0.9; }
+        100% { transform: translateY(-350px) scale(1.3); opacity: 0; }
+      }
+      @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   const handleValidatePassword = async () => {
     try {
       const res = await axios.post(`${server}/api/v1/users/validate-meeting-password`, {
@@ -171,6 +390,35 @@ export default function VideoMeetComponent() {
       recognition.onresult = (event) => {
         const lastResultIndex = event.results.length - 1;
         const text = event.results[lastResultIndex][0].transcript.trim();
+        const commandText = text.toLowerCase();
+
+        // Voice Command Parsing
+        if (commandText.includes("mute me")) {
+          setAudio(false);
+          alert("[Voice Command] Muting microphone");
+        } else if (commandText.includes("unmute me")) {
+          setAudio(true);
+          alert("[Voice Command] Unmuting microphone");
+        } else if (commandText.includes("turn on camera") || commandText.includes("open camera")) {
+          setVideo(true);
+          alert("[Voice Command] Turning on camera");
+        } else if (commandText.includes("turn off camera") || commandText.includes("close camera")) {
+          setVideo(false);
+          alert("[Voice Command] Turning off camera");
+        } else if (commandText.includes("share screen")) {
+          handleScreen();
+          alert("[Voice Command] Toggling screen share");
+        } else if (commandText.includes("raise hand")) {
+          handleRaiseHand();
+          alert("[Voice Command] Toggling raised hand");
+        } else if (commandText.includes("open chat")) {
+          setModal(true);
+          setActiveTab("chat");
+          alert("[Voice Command] Opening Chat");
+        } else if (commandText.includes("leave meeting")) {
+          handleEndCall();
+        }
+
         if (text && socketRef.current) {
           const meetingCode = window.location.pathname.substring(1);
           socketRef.current.emit("transcription-chunk", meetingCode, username, text);
@@ -564,6 +812,18 @@ export default function VideoMeetComponent() {
           ...prev,
           { speaker, text, timestamp: new Date() }
         ]);
+        setCaptionText(`${speaker}: "${text}"`);
+        setTimeout(() => {
+          setCaptionText(prev => prev.startsWith(speaker) ? "" : prev);
+        }, 4000);
+      });
+
+      socketRef.current.on("user-raised-hand", (id, raised, senderName) => {
+        setRaisedHands(prev => ({ ...prev, [id]: raised }));
+      });
+
+      socketRef.current.on("emoji-received", (emoji, senderName) => {
+        triggerFloatingEmoji(emoji);
       });
 
       socketRef.current.on("user-left", (id) => {
@@ -774,6 +1034,98 @@ export default function VideoMeetComponent() {
     if (socketRef.current) socketRef.current.emit("end-meeting-all", meetingCode);
   };
 
+  const handleRaiseHand = () => {
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+    if (socketRef.current) {
+      socketRef.current.emit("raise-hand", meetingCode, nextState);
+    }
+  };
+  const getInitials = (name = "") => {
+    if (!name.trim()) return "?";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  };
+
+  const triggerFloatingEmoji = (emoji, senderName = "Guest") => {
+    const id = Math.random();
+    setFloatingEmojis(prev => [...prev, { id, emoji, senderName, left: Math.random() * 60 + 20 }]);
+    setTimeout(() => {
+      setFloatingEmojis(prev => prev.filter(e => e.id !== id));
+    }, 2500);
+  };
+
+  const sendEmoji = (emoji) => {
+    if (socketRef.current) {
+      socketRef.current.emit("send-emoji", meetingCode, emoji);
+    }
+    triggerFloatingEmoji(emoji, username || "You");
+    resetPickerTimer();
+  };
+
+  const resetPickerTimer = () => {
+    clearPickerTimer();
+    pickerTimerRef.current = setTimeout(() => {
+      setShowEmojiPicker(false);
+    }, 5000);
+  };
+
+  const clearPickerTimer = () => {
+    if (pickerTimerRef.current) {
+      clearTimeout(pickerTimerRef.current);
+      pickerTimerRef.current = null;
+    }
+  };
+
+  const toggleEmojiPicker = () => {
+    const nextState = !showEmojiPicker;
+    setShowEmojiPicker(nextState);
+    if (nextState) {
+      resetPickerTimer();
+    } else {
+      clearPickerTimer();
+    }
+  };
+
+  // Keyboard navigation and listeners
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setShowEmojiPicker(false);
+        setSettingsOpen(false);
+        setModal(false);
+        setShowPeopleModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      clearPickerTimer();
+    };
+  }, []);
+
+  const askAIQuestion = async (question) => {
+    if (!question.trim()) return;
+    setAiLoading(true);
+    setAiChatHistory(prev => [...prev, { role: "user", text: question }]);
+    setAiQuestion("");
+    try {
+      const res = await axios.post(`${server}/api/v1/users/meeting-assistant`, {
+        meetingCode,
+        question
+      });
+      setAiChatHistory(prev => [...prev, { role: "ai", text: res.data.answer }]);
+    } catch (err) {
+      console.error("AI Assistant request failed:", err);
+      setAiChatHistory(prev => [...prev, { role: "ai", text: "Error connecting to AI service." }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleHostLobbyDecision = (id, approved) => {
     if (socketRef.current) socketRef.current.emit("host-decision", meetingCode, id, approved);
   };
@@ -848,356 +1200,864 @@ export default function VideoMeetComponent() {
   return (
     <div className={styles.pageWrapper}>
       {askForUsername === true ? (
-        <div className={styles.lobbyContainer}>
-          <h2 className={styles.lobbyTitle}>Enter into Lobby</h2>
+        <div className={styles.preJoinContainer}>
+          {/* Left Panel: Preview Video Box */}
+          <div className={styles.preJoinLeft}>
+            <div className={styles.preJoinPreview}>
+              <video 
+                ref={localVideoref} 
+                autoPlay 
+                muted 
+                className={styles.preJoinVideo}
+                style={{ filter: backgroundBlur ? "blur(12px) contrast(1.1)" : "none" }}
+              ></video>
+              <div className={styles.preJoinLeftControls}>
+                <IconButton onClick={() => setVideo(!video)} style={{ color: video ? "#fff" : "#ff4d4d" }}>
+                  {video ? <VideocamIcon /> : <VideocamOffIcon />}
+                </IconButton>
+                <IconButton onClick={() => setAudio(!audio)} style={{ color: audio ? "#fff" : "#ff4d4d" }}>
+                  {audio ? <MicIcon /> : <MicOffIcon />}
+                </IconButton>
+                <IconButton onClick={() => setBackgroundBlur(!backgroundBlur)} style={{ color: backgroundBlur ? "#018CCB" : "#fff" }} title="Toggle Background Blur">
+                  {backgroundBlur ? <BlurOnIcon /> : <BlurOffIcon />}
+                </IconButton>
+                <IconButton onClick={() => setNoiseSuppression(!noiseSuppression)} style={{ color: noiseSuppression ? "#018CCB" : "#fff" }} title="Toggle AI Noise Suppression">
+                  <HearingIcon />
+                </IconButton>
+              </div>
+            </div>
+            
+            {/* Audio Indicator */}
+            {audio && (
+              <div className={styles.micIndicatorWrap} style={{ width: "100%", maxWidth: "640px", marginTop: "12px" }}>
+                <VolumeUpIcon fontSize="small" style={{ color: "#aaa" }} />
+                <div className={styles.micIndicatorTrack}>
+                  <div className={styles.micIndicatorFill} style={{ width: `${Math.min(micLevel * 3.5, 100)}%` }}></div>
+                </div>
+              </div>
+            )}
+          </div>
 
-          <div className={styles.lobbyControls}>
+          {/* Right Panel: Join Settings */}
+          <div className={styles.preJoinRight}>
+            <h1 className={styles.preJoinTitle}>Ready to join?</h1>
+            <p className={styles.preJoinSubtitle}>Manage your devices and enter a nickname to get started.</p>
+
             <TextField
-              id="outlined-basic"
-              label="Username"
+              label="Username / Name"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               variant="outlined"
-              size="small"
+              fullWidth
+              InputProps={{ style: { color: "#fff", backgroundColor: "rgba(255,255,255,0.03)" } }}
             />
-            <Button variant="contained" onClick={connect}>
-              Connect
-            </Button>
-          </div>
 
-          <div className={styles.lobbyPreview}>
-            <video ref={localVideoref} autoPlay muted className={styles.lobbyVideo}></video>
+            {/* Device Selectors Card */}
+            <div className={styles.deviceSelectorCard}>
+              <Typography variant="caption" style={{ color: "#aaa", fontWeight: "bold" }}>INPUT DEVICES</Typography>
+              
+              {/* Camera Selector */}
+              <FormControl fullWidth size="small">
+                <Select
+                  value={selectedVideo}
+                  onChange={(e) => {
+                    setSelectedVideo(e.target.value);
+                    handleDeviceChange(e.target.value, selectedAudio);
+                  }}
+                  displayEmpty
+                  style={{ color: "#fff", backgroundColor: "rgba(0,0,0,0.2)" }}
+                >
+                  <MenuItem value="" disabled>Select Camera</MenuItem>
+                  {videoDevices.map(d => (
+                    <MenuItem key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.substring(0,5)}`}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {/* Microphone Selector */}
+              <FormControl fullWidth size="small">
+                <Select
+                  value={selectedAudio}
+                  onChange={(e) => {
+                    setSelectedAudio(e.target.value);
+                    handleDeviceChange(selectedVideo, e.target.value);
+                  }}
+                  displayEmpty
+                  style={{ color: "#fff", backgroundColor: "rgba(0,0,0,0.2)" }}
+                >
+                  <MenuItem value="" disabled>Select Microphone</MenuItem>
+                  {audioDevices.map(d => (
+                    <MenuItem key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.substring(0,5)}`}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </div>
+
+            {/* Join Action Buttons */}
+            <div className={styles.joinButtonRow}>
+              <Button 
+                variant="contained" 
+                fullWidth 
+                onClick={() => {
+                  setCompanionMode(false);
+                  setPresentOnly(false);
+                  connect();
+                }}
+                style={{ backgroundColor: "#018CCB", fontWeight: "bold" }}
+              >
+                Join Now
+              </Button>
+              <Button 
+                variant="outlined" 
+                fullWidth 
+                onClick={() => {
+                  setCompanionMode(false);
+                  setPresentOnly(true);
+                  setVideo(false);
+                  connect();
+                }}
+                style={{ borderColor: "#018CCB", color: "#018CCB", fontWeight: "bold" }}
+                startIcon={<PresentToAllIcon />}
+              >
+                Present
+              </Button>
+            </div>
+
+            <Button 
+              variant="text" 
+              fullWidth 
+              onClick={() => {
+                setCompanionMode(true);
+                setVideo(false);
+                setAudio(false);
+                connect();
+              }}
+              style={{ color: "#aaa", fontSize: "12px", textTransform: "none" }}
+              startIcon={<LaptopIcon />}
+            >
+              Use Companion Mode (No audio/video)
+            </Button>
           </div>
         </div>
       ) : (
-        <div className={styles.meetContainer}>
-          
-          {/* CHAT & TRANSCRIPT & PEOPLE PANEL */}
-          {showModal && (
-            <aside className={styles.chatPanel}>
-              <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-                <button
-                  onClick={() => setActiveTab("chat")}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    background: activeTab === "chat" ? "rgba(255,255,255,0.1)" : "transparent",
-                    color: activeTab === "chat" ? "#018CCB" : "#fff",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    borderBottom: activeTab === "chat" ? "2px solid #018CCB" : "none"
-                  }}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => setActiveTab("transcript")}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    background: activeTab === "transcript" ? "rgba(255,255,255,0.1)" : "transparent",
-                    color: activeTab === "transcript" ? "#018CCB" : "#fff",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    borderBottom: activeTab === "transcript" ? "2px solid #018CCB" : "none"
-                  }}
-                >
-                  Transcript
-                </button>
-                <button
-                  onClick={() => setActiveTab("people")}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    background: activeTab === "people" ? "rgba(255,255,255,0.1)" : "transparent",
-                    color: activeTab === "people" ? "#018CCB" : "#fff",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    borderBottom: activeTab === "people" ? "2px solid #018CCB" : "none"
-                  }}
-                >
-                  People
-                </button>
-                <button 
-                  className={styles.closeChatBtn} 
-                  onClick={closeChat}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                    padding: "0 10px"
-                  }}
-                >×</button>
+        <div className={styles.meetContainer} style={{ display: "flex", flexDirection: "row", overflow: "hidden" }}>
+          {/* MAIN AREA — animated width */}
+          <motion.main
+            className={isFullscreen ? styles.fullscreenMain : styles.mainArea}
+            layout
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            style={{ position: "relative", overflow: "hidden", height: "100%", display: "flex", flexDirection: "column" }}
+          >
+            {/* FLOATING TOP STATUS BAR (inside motion.main to overlay the video container) */}
+            <div style={{
+              position: "absolute",
+              top: 24,
+              left: 24,
+              right: 24,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              zIndex: 95,
+              pointerEvents: "none"
+            }}>
+              <div style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                pointerEvents: "auto",
+                color: "#fff",
+                fontSize: "14px",
+                fontWeight: "500"
+              }}>
+                <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                <span style={{ opacity: 0.5 }}>|</span>
+                <span style={{ fontWeight: "bold" }}>{meetingCode}</span>
+                <span style={{ opacity: 0.5 }}>|</span>
+                <span style={{ cursor: "pointer", display: "inline-flex", alignItems: "center" }} title="Meeting details">ⓘ</span>
               </div>
 
-              {activeTab === "chat" ? (
-                <>
-                  <div className={styles.chatBody}>
-                    {messages.length ? (
-                      messages.map((item, index) => (
-                        <div key={index} className={styles.chatMessage}>
-                          <div className={styles.chatSender}>{item.sender}</div>
-                          <div className={styles.chatText}>{item.data}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className={styles.emptyChat}>No messages yet</div>
-                    )}
-                  </div>
-
-                  <div className={styles.chatInput}>
-                    <TextField
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder={isChatDisabled && !isHost ? "Chat disabled by host" : "Type a message..."}
-                      disabled={isChatDisabled && !isHost}
-                      size="small"
-                      fullWidth
-                    />
-                    <Button variant="contained" onClick={sendMessage} disabled={isChatDisabled && !isHost}>Send</Button>
-                  </div>
-                </>
-              ) : activeTab === "transcript" ? (
-                <>
-                  <div className={styles.chatBody} style={{ padding: "10px" }}>
-                    {transcripts.length ? (
-                      transcripts.map((item, index) => (
-                        <div key={index} style={{ marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "6px" }}>
-                          <div style={{ fontWeight: "bold", color: "#018CCB", fontSize: "13px" }}>{item.speaker}</div>
-                          <div style={{ color: "#e0e0e0", fontSize: "14px", marginTop: "2px" }}>{item.text}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className={styles.emptyChat}>No speech transcribed yet. Speak into your mic!</div>
-                    )}
-                  </div>
-
-                  <div style={{ padding: "10px", display: "flex", gap: "8px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                    <Button variant="outlined" fullWidth size="small" onClick={() => downloadTranscript("txt")} style={{ borderColor: "#018CCB", color: "#018CCB" }}>
-                      Export TXT
-                    </Button>
-                    <Button variant="contained" fullWidth size="small" onClick={() => downloadTranscript("pdf")} style={{ backgroundColor: "#018CCB" }}>
-                      Export PDF
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                /* PEOPLE & HOST CONTROLS PANEL */
-                <Box sx={{ p: 2, display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
-                  {/* Host settings toggle list */}
-                  {isHost && (
-                    <Box sx={{ mb: 3 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: "bold", color: "#018CCB", mb: 1 }}>Host Controls</Typography>
-                      <Stack spacing={1}>
-                        <FormControlLabel
-                          control={<Switch checked={isMeetingLocked} onChange={handleHostToggleLock} size="small" />}
-                          label={<Typography variant="body2" color="#fff">Lock Meeting Room</Typography>}
-                        />
-                        <FormControlLabel
-                          control={<Switch checked={isChatDisabled} onChange={handleHostToggleChat} size="small" />}
-                          label={<Typography variant="body2" color="#fff">Disable Chat for Guests</Typography>}
-                        />
-                        <FormControlLabel
-                          control={<Switch checked={isScreenShareDisabled} onChange={handleHostToggleScreenShare} size="small" />}
-                          label={<Typography variant="body2" color="#fff">Disable Screen Sharing</Typography>}
-                        />
-                      </Stack>
-
-                      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                        <Button variant="outlined" color="warning" size="small" fullWidth onClick={handleHostMuteAll} style={{ fontSize: "11px" }}>
-                          Mute Everyone
-                        </Button>
-                        <Button variant="contained" color="error" size="small" fullWidth onClick={handleHostEndMeetingAll} style={{ fontSize: "11px" }}>
-                          End for All
-                        </Button>
-                      </Stack>
-                    </Box>
-                  )}
-
-                  {/* Lobby Queue (Admit list) */}
-                  {isHost && waitingList.length > 0 && (
-                    <Box sx={{ mb: 3, p: 1.5, border: "1px dashed #fff59d", backgroundColor: "rgba(255,245,157,0.05)", borderRadius: "8px" }}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: "bold", color: "#fff59d" }}>Lobby Queue ({waitingList.length})</Typography>
-                        <Button size="small" variant="text" onClick={handleHostLobbyApproveAll} style={{ fontSize: "11px", color: "#fff59d" }}>Admit All</Button>
-                      </Box>
-                      <List dense>
-                        {waitingList.map((p) => (
-                          <ListItem
-                            key={p.socketId}
-                            secondaryAction={
-                              <Stack direction="row" spacing={1}>
-                                <Button variant="contained" color="success" size="small" onClick={() => handleHostLobbyDecision(p.socketId, true)} style={{ padding: "2px 8px", fontSize: "10px" }}>Admit</Button>
-                                <Button variant="outlined" color="error" size="small" onClick={() => handleHostLobbyDecision(p.socketId, false)} style={{ padding: "2px 8px", fontSize: "10px" }}>Deny</Button>
-                              </Stack>
-                            }
-                            disablePadding
-                            sx={{ py: 0.5 }}
-                          >
-                            <ListItemText primary={<Typography variant="body2" sx={{ color: "#fff" }}>{p.username}</Typography>} />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-                  )}
-
-                  <Divider sx={{ my: 1, borderColor: "rgba(255,255,255,0.1)" }} />
-
-                  {/* Participant roster list */}
-                  <Typography variant="subtitle2" sx={{ fontWeight: "bold", color: "#018CCB", mt: 1, mb: 1 }}>Roster List</Typography>
-                  <List dense>
-                    {/* Local User */}
-                    <ListItem sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={<Typography variant="body2" sx={{ color: "#fff", fontWeight: "bold" }}>{username} (You)</Typography>}
-                        secondary={<Typography variant="caption" color="primary">Host</Typography>}
-                      />
-                    </ListItem>
-
-                    {/* Remote users */}
-                    {videos.map((v) => (
-                      <ListItem
-                        key={v.socketId}
-                        secondaryAction={
-                          isHost && (
-                            <Button
-                              variant="outlined"
-                              color="error"
-                              size="small"
-                              onClick={() => handleHostRemoveParticipant(v.socketId)}
-                              style={{ padding: "2px 8px", fontSize: "10px" }}
-                            >
-                              Remove
-                            </Button>
-                          )
-                        }
-                        sx={{ px: 0 }}
-                      >
-                        <ListItemText
-                          primary={<Typography variant="body2" sx={{ color: "#fff" }}>Participant (ID: {v.socketId.substring(0, 5)})</Typography>}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-
-              {/* Copy Meeting Code Section */}
               <div style={{
-                padding: "15px",
-                borderTop: "1px solid rgba(255,255,255,0.1)",
-                backgroundColor: "rgba(0,0,0,0.2)"
+                display: "flex",
+                gap: "8px",
+                alignItems: "center",
+                pointerEvents: "auto"
               }}>
-                <div style={{ marginBottom: "8px", color: "#b0b0b0", fontSize: "12px" }}>Meeting Code</div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <TextField
-                    value={window.location.pathname.substring(1)}
-                    size="small"
-                    fullWidth
-                    InputProps={{
-                      readOnly: true,
-                      style: { color: "#fff", fontSize: "14px" }
-                    }}
-                  />
-                  <IconButton
-                    onClick={copyMeetingCode}
-                    size="small"
-                    style={{ backgroundColor: "#018CCB", color: "#fff" }}
-                  >
-                    <ContentCopyIcon fontSize="small" />
-                  </IconButton>
+                <div 
+                  onClick={() => {
+                    setShowPeopleModal(!showPeopleModal);
+                    setModal(false);
+                  }}
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    backgroundColor: "#e91e63",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: "bold",
+                    fontSize: "13px",
+                    color: "#fff",
+                    position: "relative",
+                    cursor: "pointer"
+                  }}
+                  title="People"
+                >
+                  {username ? username.charAt(0).toUpperCase() : "U"}
                 </div>
               </div>
-            </aside>
-          )}
+            </div>
 
-          {/* MAIN AREA */}
-          <main className={styles.mainArea}>
             <div className={styles.conferenceWrap}>
+              {/* Grid Wrapper */}
+              {screen ? (
+                /* Screen Share Active Viewport */
+                <div style={{
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  gap: "16px",
+                  flexDirection: "row"
+                }}>
+                  {/* Main Screen Share Area */}
+                  <div style={{
+                    flex: 3,
+                    position: "relative",
+                    borderRadius: "20px",
+                    overflow: "hidden",
+                    backgroundColor: "#000",
+                    border: "2px solid #018CCB"
+                  }}>
+                    <video
+                      ref={localVideoref}
+                      autoPlay
+                      muted
+                      playsInline
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    ></video>
+                    <div style={{
+                      position: "absolute",
+                      bottom: "12px",
+                      left: "12px",
+                      backgroundColor: "rgba(0,0,0,0.6)",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      color: "#fff",
+                      fontSize: "12px"
+                    }}>
+                      🖥️ You are presenting
+                    </div>
+                  </div>
 
-              {/* Large Main Video */}
-              <div className={styles.primaryVideo}>
-                {videos.length > 0 ? (
-                  <video
-                    ref={(ref) => {
-                      if (ref && videos[0] && videos[0].stream) {
-                        ref.srcObject = videos[0].stream;
-                      }
-                    }}
-                    autoPlay
-                    playsInline
-                    className={styles.largeVideo}
-                  ></video>
-                ) : (
-                  <video
-                    ref={localVideoref}
-                    autoPlay
-                    muted
-                    className={styles.largeVideo}
-                  ></video>
-                )}
-              </div>
-
-              {/* Conference Grid (EXCLUDES LOCAL VIDEO) */}
-              <div className={styles.conferenceGrid}>
-                {videos
-                  .filter((v) => v.socketId !== socketIdRef.current)
-                  .map((video) => (
-                    <div key={video.socketId} className={styles.gridItem}>
+                  {/* Sidebar Thumbnails */}
+                  <div style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    overflowY: "auto",
+                    minWidth: "220px"
+                  }}>
+                    {/* Remote streams thumbnails */}
+                    {videos.map((v) => (
+                      <div key={v.socketId} style={{
+                        position: "relative",
+                        width: "100%",
+                        height: "140px",
+                        borderRadius: "20px",
+                        overflow: "hidden",
+                        backgroundColor: "#1e1e1f",
+                        border: "1px solid rgba(255,255,255,0.06)"
+                      }}>
+                        <video
+                          ref={(ref) => {
+                            if (ref && v.stream) {
+                              ref.srcObject = v.stream;
+                            }
+                          }}
+                          autoPlay
+                          playsInline
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        ></video>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* Regular Grid Layout */
+                <div style={{
+                  display: "grid",
+                  gap: "12px",
+                  width: "100%",
+                  height: "100%",
+                  gridTemplateColumns: videos.length === 0 ? "1fr" :
+                                       videos.length === 1 ? "1fr 1fr" :
+                                       videos.length === 2 ? "repeat(auto-fit, minmax(320px, 1fr))" :
+                                       "repeat(auto-fit, minmax(280px, 1fr))",
+                  gridTemplateRows: "1fr",
+                  alignItems: "stretch",
+                  justifyItems: "stretch"
+                }}>
+                  {/* Local user tile (Always rendered immediately) */}
+                  <div style={{
+                    position: "relative",
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "20px",
+                    overflow: "hidden",
+                    backgroundColor: "#1e1e1f",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.4)"
+                  }}>
+                    {video ? (
                       <video
-                        data-socket={video.socketId}
+                        ref={localVideoref}
+                        autoPlay
+                        muted
+                        playsInline
+                        style={{ width: "100%", height: "100%", objectFit: "cover", transform: mirrorMode ? "scaleX(-1)" : "none" }}
+                      ></video>
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "linear-gradient(135deg, #111, #1e1e1f)"
+                      }}>
+                        <div style={{
+                          width: "80px",
+                          height: "80px",
+                          borderRadius: "50%",
+                          background: "linear-gradient(135deg, #018CCB, #016b9b)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "32px",
+                          fontWeight: "bold",
+                          color: "#fff",
+                          boxShadow: "0 8px 16px rgba(0,0,0,0.3)"
+                        }}>
+                          {getInitials(username)}
+                        </div>
+                      </div>
+                    )}
+                               {/* Tile Bottom Overlay Info */}
+                    <div style={{
+                      position: "absolute",
+                      bottom: "12px",
+                      left: "12px",
+                      backgroundColor: "rgba(0,0,0,0.5)",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      backdropFilter: "blur(10px)",
+                      width: "fit-content"
+                    }}>
+                      <span style={{ fontSize: "12px", fontWeight: "bold", color: "#fff" }}>
+                        {username || "You"} (Host)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Remote users tiles */}
+                  {videos.map((v) => (
+                    <div key={v.socketId} style={{
+                      position: "relative",
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "20px",
+                      overflow: "hidden",
+                      backgroundColor: "#1e1e1f",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      boxShadow: "0 4px 20px rgba(0,0,0,0.4)"
+                    }}>
+                      <video
                         ref={(ref) => {
-                          if (ref && video.stream) {
-                            ref.srcObject = video.stream;
+                          if (ref && v.stream) {
+                            ref.srcObject = v.stream;
                           }
                         }}
                         autoPlay
                         playsInline
-                        className={styles.gridVideo}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       ></video>
+
+                      {/* Tile Bottom Overlay Info */}
+                      <div style={{
+                        position: "absolute",
+                        bottom: "12px",
+                        left: "12px",
+                        backgroundColor: "rgba(0,0,0,0.5)",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        backdropFilter: "blur(10px)",
+                        width: "fit-content"
+                      }}>
+                        <span style={{ fontSize: "12px", fontWeight: "bold", color: "#fff" }}>
+                          Guest ({v.socketId.substring(0, 5)})
+                        </span>
+                      </div>
                     </div>
                   ))}
-              </div>
-
+                </div>
+              )}
             </div>
 
-            {/* BOTTOM CONTROL BAR (centered) */}
-            <div className={styles.controlBar}>
-              <IconButton onClick={copyMeetingCode} className={styles.controlButton} size="large" title="Copy Meeting Link">
-                <ContentCopyIcon />
-              </IconButton>
+            {/* Floating Emojis Animation Track */}
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 120, overflow: "hidden" }}>
+              {floatingEmojis.map(e => (
+                <div
+                  key={e.id}
+                  style={{
+                    position: "absolute",
+                    bottom: "100px",
+                    left: `${e.left}%`,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: "rgba(0,0,0,0.65)",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
+                    color: "#fff",
+                    fontSize: "13px",
+                    fontWeight: "500",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    animation: "floatUp 2.5s forwards ease-in-out"
+                  }}
+                >
+                  <span style={{ fontSize: "22px" }}>{e.emoji}</span>
+                  <span style={{ fontSize: "11px", fontWeight: "bold", opacity: 0.9 }}>{e.senderName}</span>
+                </div>
+              ))}
+            </div>
 
-              <IconButton onClick={handleVideo} className={styles.controlButton} size="large">
-                {video ? <VideocamIcon /> : <VideocamOffIcon />}
-              </IconButton>
+            {/* Live Captions Display Box */}
+            {showCaptions && captionText && (
+              <div style={{
+                position: "absolute",
+                bottom: "110px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: "rgba(0,0,0,0.75)",
+                color: "#fff",
+                padding: "8px 20px",
+                borderRadius: "8px",
+                fontSize: "15px",
+                fontWeight: "500",
+                zIndex: 110,
+                maxWidth: "80%",
+                textAlign: "center",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+              }}>
+                {captionText}
+              </div>
+            )}
 
-              <IconButton
-                onClick={handleEndCall}
-                sx={{ background: "#ff4d4d", color: "white" }}
-                size="large"
+            {/* FLOATING PILL REACTION PICKER */}
+            {showEmojiPicker && (
+              <div 
+                onMouseEnter={resetPickerTimer}
+                onMouseLeave={resetPickerTimer}
+                style={{
+                  position: "absolute",
+                  bottom: "85px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "8px 16px",
+                  borderRadius: "9999px",
+                  backgroundColor: "rgba(30, 30, 31, 0.9)",
+                  backdropFilter: "blur(20px)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.6)",
+                  zIndex: 105,
+                  overflowX: "auto",
+                  maxWidth: "90vw"
+                }}
               >
-                <CallEndIcon />
-              </IconButton>
+                {["❤️", "👍", "🎉", "👏", "😂", "😮", "😢", "🤔", "👎", "🔥", "🚀", "🙌", "👏👏", "😊"].map(emoji => (
+                  <button
+                    key={emoji}
+                    onClick={() => sendEmoji(emoji)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      fontSize: "22px",
+                      cursor: "pointer",
+                      padding: "4px",
+                      transition: "transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                      borderRadius: "50%"
+                    }}
+                    onMouseOver={(e) => {
+                      e.target.style.transform = "scale(1.25)";
+                      e.target.style.backgroundColor = "rgba(255,255,255,0.08)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.target.style.transform = "scale(1.0)";
+                      e.target.style.backgroundColor = "transparent";
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
 
-              <IconButton onClick={handleAudio} className={styles.controlButton} size="large">
-                {audio ? <MicIcon /> : <MicOffIcon />}
-              </IconButton>
+            {/* BOTTOM CONTROL BAR (centered) */}
+            <div className={styles.controlBar} style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "12px",
+              padding: "10px 24px",
+              borderRadius: "9999px",
+              backgroundColor: "rgba(30, 30, 31, 0.75)",
+              backdropFilter: "blur(20px)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              maxWidth: "fit-content",
+              margin: "0 auto",
+              position: "absolute",
+              bottom: "20px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 100
+            }}>
+              {/* Activity Indicator */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(76, 175, 80, 0.15)",
+                color: "#4caf50",
+                fontSize: "11px",
+                fontWeight: "bold",
+                marginRight: "6px"
+              }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#4caf50", display: "inline-block", animation: "bounce 1.5s infinite" }}></span>
+                Live
+              </div>
 
+              {/* Microphone Button with dropdown trigger */}
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <IconButton
+                  onClick={handleAudio}
+                  style={{
+                    backgroundColor: audio ? "rgba(255,255,255,0.08)" : "#ff4d4d",
+                    color: "#fff",
+                    width: "44px",
+                    height: "44px"
+                  }}
+                  title={audio ? "Mute Microphone" : "Unmute Microphone"}
+                >
+                  {audio ? <MicIcon /> : <MicOffIcon />}
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={(e) => setMicMenuAnchor(e.currentTarget)}
+                  style={{ color: "#aaa", marginLeft: "-8px" }}
+                >
+                  <span style={{ fontSize: "10px" }}>▼</span>
+                </IconButton>
+              </div>
+
+              {/* Camera Button with dropdown trigger */}
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <IconButton
+                  onClick={handleVideo}
+                  style={{
+                    backgroundColor: video ? "rgba(255,255,255,0.08)" : "#ff4d4d",
+                    color: "#fff",
+                    width: "44px",
+                    height: "44px"
+                  }}
+                  title={video ? "Turn Camera Off" : "Turn Camera On"}
+                >
+                  {video ? <VideocamIcon /> : <VideocamOffIcon />}
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={(e) => setCamMenuAnchor(e.currentTarget)}
+                  style={{ color: "#aaa", marginLeft: "-8px" }}
+                >
+                  <span style={{ fontSize: "10px" }}>▼</span>
+                </IconButton>
+              </div>
+
+              {/* Screen Share */}
               {screenAvailable && (
-                <IconButton onClick={handleScreen} className={styles.controlButton} size="large">
+                <IconButton
+                  onClick={handleScreen}
+                  style={{
+                    backgroundColor: screen ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                    color: screen ? "#018CCB" : "#fff",
+                    width: "44px",
+                    height: "44px"
+                  }}
+                  title={screen ? "Stop Sharing" : "Share Screen"}
+                >
                   {screen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
                 </IconButton>
               )}
 
+              {/* Hand Raise */}
+              <IconButton
+                onClick={handleRaiseHand}
+                style={{
+                  backgroundColor: isHandRaised ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                  color: isHandRaised ? "#018CCB" : "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Raise Hand"
+              >
+                <span style={{ fontSize: "18px" }}>✋</span>
+              </IconButton>
+
+              {/* Live Captions Toggle */}
+              <IconButton
+                onClick={() => setShowCaptions(!showCaptions)}
+                style={{
+                  backgroundColor: showCaptions ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                  color: showCaptions ? "#018CCB" : "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Toggle Live Captions"
+              >
+                <span style={{ fontSize: "14px", fontWeight: "bold" }}>CC</span>
+              </IconButton>
+
+              {/* Emoji Reactions Trigger Button */}
+              <IconButton
+                onClick={toggleEmojiPicker}
+                style={{
+                  backgroundColor: showEmojiPicker ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                  color: showEmojiPicker ? "#018CCB" : "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Send Reaction"
+              >
+                <SentimentSatisfiedAltIcon />
+              </IconButton>
+
+              {/* Settings Toggle Button */}
+              <IconButton
+                onClick={() => setSettingsOpen(true)}
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Settings"
+              >
+                <SettingsIcon />
+              </IconButton>
+
+              {/* Fullscreen Toggle Button */}
+              <IconButton
+                onClick={() => {
+                  if (!isFullscreen) {
+                    document.documentElement.requestFullscreen?.();
+                  } else {
+                    document.exitFullscreen?.();
+                  }
+                  setIsFullscreen(!isFullscreen);
+                }}
+                style={{
+                  backgroundColor: isFullscreen ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                  color: isFullscreen ? "#018CCB" : "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+              >
+                <span style={{ fontSize: "16px" }}>{isFullscreen ? "⛶" : "⛶"}</span>
+              </IconButton>
+
+              {/* More Options Vert Button */}
+              <IconButton
+                onClick={(e) => setMoreMenuAnchor(e.currentTarget)}
+                style={{
+                  backgroundColor: moreMenuAnchor ? "rgba(1, 140, 203, 0.15)" : "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="More Options"
+              >
+                <MoreVertIcon />
+              </IconButton>
+
+              {/* MORE OPTIONS MENU POPUP */}
+              <Menu
+                anchorEl={moreMenuAnchor}
+                open={Boolean(moreMenuAnchor)}
+                onClose={() => setMoreMenuAnchor(null)}
+                PaperProps={{
+                  style: {
+                    backgroundColor: "rgba(30, 30, 31, 0.95)",
+                    backdropFilter: "blur(20px)",
+                    color: "#fff",
+                    borderRadius: "16px",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    width: "320px",
+                    maxHeight: "400px",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+                  }
+                }}
+              >
+                {/* MEETING SECTION */}
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#018CCB" }}>MEETING</MenuItem>
+                <MenuItem onClick={() => { alert("Casting initiated..."); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>📺</span> Cast this Meeting
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Recording started successfully"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🎥</span> Start Recording
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Recording paused"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>⏸</span> Pause Recording
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Recording stopped. Summary generated."); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>⏹</span> Stop Recording
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Change view layouts under Appearance Settings tab."); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🖥</span> Adjust Layout
+                </MenuItem>
+                <MenuItem onClick={() => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } else { document.exitFullscreen(); } setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🖼</span> Fullscreen
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Picture-in-Picture mode opened"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🗔</span> Picture-in-Picture Mode
+                </MenuItem>
+                <MenuItem onClick={() => { setSettingsOpen(true); setSettingsTab("appearance"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🎨</span> Background & Effects
+                </MenuItem>
+                <MenuItem onClick={() => { copyMeetingCode(); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🔗</span> Copy Meeting Link
+                </MenuItem>
+
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+
+                {/* AI FEATURES SECTION */}
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#018CCB" }}>AI FEATURES</MenuItem>
+                <MenuItem onClick={() => { setModal(true); setActiveTab("assistant"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🤖</span> AI Assistant Sidepanel
+                </MenuItem>
+                <MenuItem onClick={() => { askAIQuestion("Summarize today's meeting."); setModal(true); setActiveTab("assistant"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>📝</span> Generate Meeting Summary
+                </MenuItem>
+                <MenuItem onClick={() => { askAIQuestion("What were today's decisions?"); setModal(true); setActiveTab("assistant"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>📌</span> Extract Key Decisions
+                </MenuItem>
+                <MenuItem onClick={() => { downloadTranscript("txt"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>⬇</span> Download Transcript
+                </MenuItem>
+
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+
+                {/* TOOLS SECTION */}
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#018CCB" }}>TOOLS</MenuItem>
+                <MenuItem onClick={() => { setSettingsOpen(true); setSettingsTab("audio"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🔊</span> Audio Settings
+                </MenuItem>
+                <MenuItem onClick={() => { setSettingsOpen(true); setSettingsTab("video"); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>📷</span> Camera Settings
+                </MenuItem>
+                <MenuItem onClick={() => { setSettingsOpen(true); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>⚙</span> All Settings Tab
+                </MenuItem>
+
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+
+                {/* HELP SECTION */}
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#018CCB" }}>HELP</MenuItem>
+                <MenuItem onClick={() => { alert("Problem report submitted."); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>🐞</span> Report a Problem
+                </MenuItem>
+                <MenuItem onClick={() => { alert("Help Center references opened."); setMoreMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  <span style={{ marginRight: "12px" }}>❓</span> Help Center
+                </MenuItem>
+              </Menu>
+
+              {/* Leave Meeting Button (Red) */}
+              <IconButton
+                onClick={handleEndCall}
+                style={{
+                  backgroundColor: "#ff4d4d",
+                  color: "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Leave Meeting"
+              >
+                <CallEndIcon />
+              </IconButton>
+
+              {/* MIC SUBMENU POPUP */}
+              <Menu
+                anchorEl={micMenuAnchor}
+                open={Boolean(micMenuAnchor)}
+                onClose={() => setMicMenuAnchor(null)}
+                PaperProps={{ style: { backgroundColor: "#1e1e1f", color: "#fff" } }}
+              >
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#888" }}>SELECT MICROPHONE</MenuItem>
+                {audioDevices.map(d => (
+                  <MenuItem key={d.deviceId} onClick={() => { setSelectedAudio(d.deviceId); handleDeviceChange(selectedVideo, d.deviceId); setMicMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                    {selectedAudio === d.deviceId ? "✓ " : ""}{d.label || `Microphone ${d.deviceId.substring(0,5)}`}
+                  </MenuItem>
+                ))}
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                <MenuItem onClick={() => { setNoiseSuppression(!noiseSuppression); setMicMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  {noiseSuppression ? "Disable" : "Enable"} AI Noise Suppression
+                </MenuItem>
+                <MenuItem onClick={() => { setEchoCancellation(!echoCancellation); setMicMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  {echoCancellation ? "Disable" : "Enable"} Echo Cancellation
+                </MenuItem>
+              </Menu>
+
+              {/* CAMERA SUBMENU POPUP */}
+              <Menu
+                anchorEl={camMenuAnchor}
+                open={Boolean(camMenuAnchor)}
+                onClose={() => setCamMenuAnchor(null)}
+                PaperProps={{ style: { backgroundColor: "#1e1e1f", color: "#fff" } }}
+              >
+                <MenuItem disabled style={{ fontSize: "11px", fontWeight: "bold", color: "#888" }}>SELECT CAMERA</MenuItem>
+                {videoDevices.map(d => (
+                  <MenuItem key={d.deviceId} onClick={() => { setSelectedVideo(d.deviceId); handleDeviceChange(d.deviceId, selectedAudio); setCamMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                    {selectedVideo === d.deviceId ? "✓ " : ""}{d.label || `Camera ${d.deviceId.substring(0,5)}`}
+                  </MenuItem>
+                ))}
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                <MenuItem onClick={() => { setMirrorMode(!mirrorMode); setCamMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  {mirrorMode ? "Disable" : "Enable"} Mirror Webcam
+                </MenuItem>
+                <MenuItem onClick={() => { setHdMode(!hdMode); setCamMenuAnchor(null); }} style={{ fontSize: "13px" }}>
+                  {hdMode ? "Disable" : "Enable"} HD Video (720p)
+                </MenuItem>
+              </Menu>
+            </div>
+
+            {/* BOTTOM-RIGHT QUICK ACTIONS (exactly like reference image) */}
+            <div style={{
+              position: "absolute",
+              bottom: "20px",
+              right: "24px",
+              display: "flex",
+              gap: "12px",
+              zIndex: 100
+            }}>
+              {/* Chat Toggle Button */}
               <IconButton
                 onClick={() => {
                   setModal(!showModal);
@@ -1205,17 +2065,398 @@ export default function VideoMeetComponent() {
                     setNewMessages(0);
                   }
                 }}
-                className={styles.controlButton}
-                size="large"
+                style={{
+                  backgroundColor: showModal ? "rgba(1, 140, 203, 0.25)" : "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="In-call Chat"
               >
                 <Badge badgeContent={newMessages} color="error">
                   <ChatIcon />
                 </Badge>
               </IconButton>
+
+              {/* Host Control Toggle Button (Lock icon) */}
+              <IconButton
+                onClick={() => {
+                  alert("Host Controls: Lock meeting settings are active.");
+                }}
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  width: "44px",
+                  height: "44px"
+                }}
+                title="Host Controls"
+              >
+                <span style={{ fontSize: "18px" }}>🔒</span>
+              </IconButton>
             </div>
-          </main>
+          </motion.main>
+
+          {/* CHAT PANEL — animated, RIGHT side */}
+          <AnimatePresence>
+            {showModal && (
+            <motion.aside
+              key="chat-panel"
+              initial={{ x: 360, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 360, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{
+                width: "360px",
+                flexShrink: 0,
+                backgroundColor: "#1e1e1f",
+                borderLeft: "1px solid rgba(255,255,255,0.08)",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                height: "100vh",
+                boxSizing: "border-box",
+                overflow: "hidden",
+                position: "relative",
+                zIndex: 90,
+                boxShadow: "-4px 0 24px rgba(0,0,0,0.4)"
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <span style={{ fontSize: "16px", fontWeight: "600", color: "#fff" }}>In-call messages</span>
+                <button
+                  onClick={closeChat}
+                  style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Host chat toggle */}
+              {isHost && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: "8px", marginBottom: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <span style={{ fontSize: "12px", color: "#ccc" }}>Let participants send messages</span>
+                  <Switch checked={!isChatDisabled} onChange={(e) => handleHostToggleChat(!e.target.checked)} size="small" />
+                </div>
+              )}
+
+              {/* Alert banner */}
+              <div style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "8px", padding: "12px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                <span style={{ fontSize: "14px" }}>💬</span>
+                <div style={{ fontSize: "11px", color: "#aaa", lineHeight: "1.4" }}>
+                  <strong style={{ color: "#fff" }}>Continuous chat is turned off</strong><br />
+                  Messages are not saved after the call ends.
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className={styles.chatBody} style={{ flex: 1, overflowY: "auto", marginBottom: "16px" }}>
+                {messages.length ? (
+                  messages.map((item, index) => (
+                    <div key={index} style={{ marginBottom: "12px" }}>
+                      <span style={{ fontWeight: "bold", fontSize: "12px", color: "#60a5fa", marginRight: "8px" }}>{item.sender}</span>
+                      <span style={{ fontSize: "11px", color: "#888" }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div style={{ fontSize: "13px", color: "#fff", marginTop: "4px", backgroundColor: "rgba(255,255,255,0.04)", padding: "8px 12px", borderRadius: "8px", maxWidth: "90%", width: "fit-content" }}>
+                        {item.data}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ textAlign: "center", color: "#888", fontSize: "12px", marginTop: "40px" }}>No messages in-call yet.</div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div style={{ display: "flex", alignItems: "center", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "24px", padding: "4px 12px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <TextField
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={isChatDisabled && !isHost ? "Chat is disabled" : "Send a message"}
+                  disabled={isChatDisabled && !isHost}
+                  variant="standard"
+                  InputProps={{ disableUnderline: true, style: { color: "#fff", fontSize: "13px" } }}
+                  fullWidth
+                />
+                <IconButton onClick={sendMessage} disabled={isChatDisabled && !isHost} size="small" style={{ color: "#fff" }}>➤</IconButton>
+              </div>
+            </motion.aside>
+            )}
+          </AnimatePresence>
+
+          {/* PEOPLE PANEL — animated, RIGHT side */}
+          <AnimatePresence>
+            {showPeopleModal && (
+            <motion.aside
+              key="people-panel"
+              initial={{ x: 360, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 360, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{
+                width: "360px",
+                flexShrink: 0,
+                backgroundColor: "#1e1e1f",
+                borderLeft: "1px solid rgba(255,255,255,0.08)",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                height: "100vh",
+                boxSizing: "border-box",
+                overflow: "hidden",
+                position: "relative",
+                zIndex: 90,
+                boxShadow: "-4px 0 24px rgba(0,0,0,0.4)"
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <span style={{ fontSize: "16px", fontWeight: "600", color: "#fff" }}>People</span>
+                <button onClick={() => setShowPeopleModal(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>×</button>
+              </div>
+
+              <Button variant="contained" onClick={copyMeetingCode} startIcon={<span>👤+</span>}
+                style={{ backgroundColor: "#018CCB", color: "#fff", textTransform: "none", borderRadius: "24px", fontSize: "13px", fontWeight: "bold", marginBottom: "16px" }}
+                fullWidth>
+                Add people
+              </Button>
+
+              <div style={{ marginBottom: "16px" }}>
+                <TextField placeholder="Search for people" variant="outlined" size="small" fullWidth
+                  InputProps={{ style: { color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: "8px" } }}
+                />
+              </div>
+
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                <div style={{ fontSize: "11px", fontWeight: "bold", color: "#888", marginBottom: "12px", textTransform: "uppercase" }}>In call</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#e91e63", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", color: "#fff" }}>
+                      {username ? username.charAt(0).toUpperCase() : "U"}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "13px", color: "#fff", fontWeight: "500" }}>{username || "You"}</div>
+                      <div style={{ fontSize: "11px", color: "#888" }}>Meeting host</div>
+                    </div>
+                  </div>
+                  <IconButton size="small" style={{ color: "#fff" }}>⋮</IconButton>
+                </div>
+                {videos.map((v) => (
+                  <div key={v.socketId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#018CCB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", color: "#fff" }}>P</div>
+                      <div style={{ fontSize: "13px", color: "#fff", fontWeight: "500" }}>Guest ({v.socketId.substring(0, 5)})</div>
+                    </div>
+                    <IconButton size="small" style={{ color: "#fff" }}>⋮</IconButton>
+                  </div>
+                ))}
+              </div>
+            </motion.aside>
+            )}
+          </AnimatePresence>
         </div>
       )}
+
+      {/* SaaS Settings Dialog */}
+      <Dialog 
+        open={settingsOpen} 
+        onClose={() => setSettingsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          style: {
+            backgroundColor: "#1e1e1f",
+            color: "#fff",
+            borderRadius: "16px",
+            border: "1px solid rgba(255,255,255,0.08)"
+          }
+        }}
+      >
+        <DialogTitle style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", fontWeight: "bold", fontSize: "20px" }}>
+          Settings
+        </DialogTitle>
+        <DialogContent style={{ display: "flex", padding: 0, minHeight: "360px" }}>
+          {/* Settings Tabs Sidebar */}
+          <div style={{
+            width: "160px",
+            borderRight: "1px solid rgba(255,255,255,0.1)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            padding: "16px 8px",
+            backgroundColor: "rgba(0,0,0,0.1)"
+          }}>
+            {["general", "audio", "video", "appearance", "notifications", "ai", "privacy"].map(tab => (
+              <Button
+                key={tab}
+                onClick={() => setSettingsTab(tab)}
+                style={{
+                  justifyContent: "flex-start",
+                  textTransform: "capitalize",
+                  color: settingsTab === tab ? "#018CCB" : "#fff",
+                  backgroundColor: settingsTab === tab ? "rgba(1, 140, 203, 0.1)" : "transparent",
+                  fontWeight: settingsTab === tab ? "bold" : "normal",
+                  fontSize: "13px",
+                  padding: "8px 12px",
+                  borderRadius: "8px"
+                }}
+              >
+                {tab}
+              </Button>
+            ))}
+          </div>
+
+          {/* Settings Panel Content */}
+          <div style={{ flex: 1, padding: "24px", display: "flex", flexDirection: "column", gap: "20px", overflowY: "auto", maxHeight: "380px" }}>
+            {settingsTab === "general" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>General Settings</Typography>
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Ask to join room (Knock protocol)</Typography>}
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Report diagnostic data to developers</Typography>}
+                />
+              </>
+            )}
+
+            {settingsTab === "audio" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>Audio Configuration</Typography>
+                <FormControl fullWidth size="small">
+                  <Typography variant="caption" style={{ color: "#aaa", marginBottom: "6px" }}>Microphone</Typography>
+                  <Select
+                    value={selectedAudio}
+                    onChange={(e) => {
+                      setSelectedAudio(e.target.value);
+                      handleDeviceChange(selectedVideo, e.target.value);
+                    }}
+                    style={{ color: "#fff", backgroundColor: "rgba(0,0,0,0.2)" }}
+                  >
+                    {audioDevices.map(d => (
+                      <MenuItem key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.substring(0,5)}`}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                <FormControlLabel
+                  control={<Switch checked={noiseSuppression} onChange={(e) => setNoiseSuppression(e.target.checked)} size="small" />}
+                  label={<Typography variant="body2">AI Noise Suppression</Typography>}
+                />
+                
+                <FormControlLabel
+                  control={<Switch checked={echoCancellation} onChange={(e) => setEchoCancellation(e.target.checked)} size="small" />}
+                  label={<Typography variant="body2">Echo Cancellation</Typography>}
+                />
+              </>
+            )}
+
+            {settingsTab === "video" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>Video Configuration</Typography>
+                <FormControl fullWidth size="small">
+                  <Typography variant="caption" style={{ color: "#aaa", marginBottom: "6px" }}>Camera</Typography>
+                  <Select
+                    value={selectedVideo}
+                    onChange={(e) => {
+                      setSelectedVideo(e.target.value);
+                      handleDeviceChange(e.target.value, selectedAudio);
+                    }}
+                    style={{ color: "#fff", backgroundColor: "rgba(0,0,0,0.2)" }}
+                  >
+                    {videoDevices.map(d => (
+                      <MenuItem key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.substring(0,5)}`}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControlLabel
+                  control={<Switch checked={mirrorMode} onChange={(e) => setMirrorMode(e.target.checked)} size="small" />}
+                  label={<Typography variant="body2">Mirror Webcam Feed</Typography>}
+                />
+
+                <FormControlLabel
+                  control={<Switch checked={hdMode} onChange={(e) => setHdMode(e.target.checked)} size="small" />}
+                  label={<Typography variant="body2">High Definition (720p/1080p)</Typography>}
+                />
+              </>
+            )}
+
+            {settingsTab === "appearance" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>Appearance Options</Typography>
+                <FormControl fullWidth size="small">
+                  <Typography variant="caption" style={{ color: "#aaa", marginBottom: "6px" }}>Roster Layout Mode</Typography>
+                  <Select
+                    value={layoutMode}
+                    onChange={(e) => setLayoutMode(e.target.value)}
+                    style={{ color: "#fff", backgroundColor: "rgba(0,0,0,0.2)" }}
+                  >
+                    <MenuItem value="compact">Compact View</MenuItem>
+                    <MenuItem value="comfortable">Comfortable View</MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <Typography variant="caption" style={{ color: "#aaa", marginTop: "10px" }}>Theme</Typography>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <Button variant="outlined" size="small" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.2)", fontSize: "11px" }}>Dark Theme</Button>
+                  <Button variant="outlined" size="small" style={{ color: "#aaa", borderColor: "rgba(255,255,255,0.1)", fontSize: "11px" }} disabled>Light Theme</Button>
+                </div>
+              </>
+            )}
+
+            {settingsTab === "notifications" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>Notifications</Typography>
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Sound alerts when guests join or leave</Typography>}
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Display desktop notifications for chat messages</Typography>}
+                />
+              </>
+            )}
+
+            {settingsTab === "ai" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>AI Integrations</Typography>
+                <Typography variant="body2" style={{ color: "#ccc" }}>
+                  - Live transcription captures spoken chunks and runs real-time translation updates.
+                </Typography>
+                <Typography variant="body2" style={{ color: "#ccc" }}>
+                  - Cosine similarity matching vectors are dynamically indexed on database search endpoints.
+                </Typography>
+                <Typography variant="body2" style={{ color: "#ccc" }}>
+                  - Speech analysis generates Kanban boards and email summaries upon call conclusion.
+                </Typography>
+              </>
+            )}
+
+            {settingsTab === "privacy" && (
+              <>
+                <Typography variant="subtitle2" style={{ fontWeight: "bold", color: "#018CCB" }}>Privacy & Security</Typography>
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Encrypt WebRTC stream endpoints (SRTP)</Typography>}
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked size="small" />}
+                  label={<Typography variant="body2">Blur local stream when entering waiting lobby</Typography>}
+                />
+              </>
+            )}
+          </div>
+        </DialogContent>
+        <DialogActions style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "12px 24px" }}>
+          <Button onClick={() => setSettingsOpen(false)} variant="contained" style={{ backgroundColor: "#018CCB" }}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={copySnackbar}

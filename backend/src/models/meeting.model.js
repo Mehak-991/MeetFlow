@@ -14,7 +14,16 @@ const meetingSchema = new Schema({
   isLocked: { type: Boolean, default: false },
   isChatDisabled: { type: Boolean, default: false },
   isScreenShareDisabled: { type: Boolean, default: false },
-  isMutedAll: { type: Boolean, default: false }
+  isMutedAll: { type: Boolean, default: false },
+
+  // Redesign meeting details
+  meetingId: { type: String },
+  meetingLink: { type: String },
+  meetingTitle: { type: String },
+  description: { type: String },
+  participants: { type: [String], default: [] },
+  password: { type: String },
+  createdAt: { type: Date, default: Date.now }
 });
 
 const Meeting = mongoose.model("Meeting", meetingSchema);

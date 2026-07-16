@@ -21,7 +21,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress
+  LinearProgress,
+  Stack
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SearchIcon from "@mui/icons-material/Search";
@@ -54,6 +55,7 @@ function InsightsDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [viewMode, setViewMode] = useState("list"); // "list" or "kanban"
 
   const fetchInsights = async () => {
     try {
@@ -143,6 +145,71 @@ function InsightsDashboard() {
     } catch (error) {
       console.error("Failed to edit task:", error);
     }
+  };
+
+  const handleExportAllICS = () => {
+    if (tasks.length === 0) return alert("No tasks available to export.");
+    let icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+`;
+
+    tasks.forEach(t => {
+      const now = new Date();
+      const startDateStr = now.toISOString().replace(/-|:|\.\d\d\d/g, "");
+      const endDateStr = new Date(now.getTime() + 60 * 60000).toISOString().replace(/-|:|\.\d\d\d/g, "");
+      icsContent += `BEGIN:VEVENT
+SUMMARY:Task: ${t.task}
+DESCRIPTION:Assigned to: ${t.assignedTo} | Meeting Code: ${t.meetingCode}
+DTSTART:${startDateStr}
+DTEND:${endDateStr}
+STATUS:${t.completed ? "COMPLETED" : "CONFIRMED"}
+END:VEVENT
+`;
+    });
+
+    icsContent += "END:VCALENDAR";
+
+    const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `meetflow_tasks_export.ics`;
+    link.click();
+  };
+
+  const renderKanbanCard = (task) => {
+    return (
+      <Paper key={task._id} sx={{ p: 1.5, borderRadius: "6px", border: "1px solid #e0e0e0", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+          <Checkbox
+            size="small"
+            checked={task.completed}
+            onChange={() => handleToggleTask(task)}
+            sx={{ p: 0 }}
+          />
+          <Box sx={{ display: "flex" }}>
+            <IconButton size="small" onClick={() => {
+              setEditingTask(task);
+              setEditTaskText(task.task);
+              setEditOwner(task.assignedTo);
+              setEditDeadline(task.deadline);
+            }}>
+              <EditIcon fontSize="inherit" />
+            </IconButton>
+            <IconButton size="small" onClick={() => handleDeleteTask(task._id)} color="error">
+              <DeleteIcon fontSize="inherit" />
+            </IconButton>
+          </Box>
+        </Box>
+        <Typography variant="body2" sx={{ fontWeight: "500", textDecoration: task.completed ? "line-through" : "none", color: task.completed ? "text.secondary" : "text.primary" }}>
+          {task.task}
+        </Typography>
+        <Box sx={{ mt: 1.5, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+          <Chip size="small" label={`Owner: ${task.assignedTo}`} sx={{ fontSize: "10px" }} />
+          <Chip size="small" label={`Due: ${task.deadline}`} color="warning" sx={{ fontSize: "10px" }} />
+        </Box>
+      </Paper>
+    );
   };
 
   if (loading) {
@@ -319,51 +386,112 @@ function InsightsDashboard() {
         {/* Tasks list */}
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 3, borderRadius: "10px" }}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>All Extracted Tasks & Deadlines</Typography>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3, flexWrap: "wrap", gap: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>Tasks & Deliverables</Typography>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button size="small" variant={viewMode === "list" ? "contained" : "outlined"} onClick={() => setViewMode("list")} sx={{ textTransform: "none", fontSize: "12px" }}>
+                  List View
+                </Button>
+                <Button size="small" variant={viewMode === "kanban" ? "contained" : "outlined"} onClick={() => setViewMode("kanban")} sx={{ textTransform: "none", fontSize: "12px" }}>
+                  Kanban Board
+                </Button>
+                <Button size="small" variant="contained" color="warning" onClick={handleExportAllICS} sx={{ textTransform: "none", fontSize: "12px" }}>
+                  Export Calendar Events (.ics)
+                </Button>
+              </Box>
+            </Box>
+
             {tasks.length > 0 ? (
-              <List sx={{ width: "100%" }}>
-                {tasks.map((task) => (
-                  <ListItem
-                    key={task._id}
-                    secondaryAction={
-                      <Box>
-                        <IconButton edge="end" onClick={() => {
-                          setEditingTask(task);
-                          setEditTaskText(task.task);
-                          setEditOwner(task.assignedTo);
-                          setEditDeadline(task.deadline);
-                        }} sx={{ mr: 1 }}>
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton edge="end" onClick={() => handleDeleteTask(task._id)} color="error">
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
-                    }
-                    disablePadding
-                    divider
-                  >
-                    <Checkbox
-                      checked={task.completed}
-                      onChange={() => handleToggleTask(task)}
-                    />
-                    <ListItemText
-                      primary={
-                        <Typography sx={{ textDecoration: task.completed ? "line-through" : "none", color: task.completed ? "text.secondary" : "text.primary", fontWeight: "500" }}>
-                          {task.task}
-                        </Typography>
-                      }
-                      secondary={
-                        <Box sx={{ display: "flex", gap: 1.5, mt: 0.5 }}>
-                          <Chip size="small" label={`Owner: ${task.assignedTo}`} variant="outlined" />
-                          <Chip size="small" label={`Deadline: ${task.deadline}`} color="warning" variant="outlined" />
-                          <Chip size="small" label={`Meeting: ${task.meetingCode}`} color="primary" variant="outlined" />
+              viewMode === "list" ? (
+                <List sx={{ width: "100%" }}>
+                  {tasks.map((task) => (
+                    <ListItem
+                      key={task._id}
+                      secondaryAction={
+                        <Box>
+                          <IconButton edge="end" onClick={() => {
+                            setEditingTask(task);
+                            setEditTaskText(task.task);
+                            setEditOwner(task.assignedTo);
+                            setEditDeadline(task.deadline);
+                          }} sx={{ mr: 1 }}>
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton edge="end" onClick={() => handleDeleteTask(task._id)} color="error">
+                            <DeleteIcon />
+                          </IconButton>
                         </Box>
                       }
-                    />
-                  </ListItem>
-                ))}
-              </List>
+                      disablePadding
+                      divider
+                    >
+                      <Checkbox
+                        checked={task.completed}
+                        onChange={() => handleToggleTask(task)}
+                      />
+                      <ListItemText
+                        primary={
+                          <Typography sx={{ textDecoration: task.completed ? "line-through" : "none", color: task.completed ? "text.secondary" : "text.primary", fontWeight: "500" }}>
+                            {task.task}
+                          </Typography>
+                        }
+                        secondary={
+                          <Box sx={{ display: "flex", gap: 1.5, mt: 0.5 }}>
+                            <Chip size="small" label={`Owner: ${task.assignedTo}`} variant="outlined" />
+                            <Chip size="small" label={`Deadline: ${task.deadline}`} color="warning" variant="outlined" />
+                            <Chip size="small" label={`Meeting: ${task.meetingCode}`} color="primary" variant="outlined" />
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                /* KANBAN BOARD VIEW */
+                <Grid container spacing={2}>
+                  {/* TODO Column */}
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 1.5, backgroundColor: "#f9f9fa", borderRadius: "8px", border: "1px solid #e3e3e3", minHeight: "350px" }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1.5, color: "#777", borderBottom: "2px solid #ccc", pb: 0.5 }}>
+                        TODO ({tasks.filter(t => !t.completed && !["urgent", "must", "asap", "immediate", "deadline", "api", "database"].some(kw => t.task.toLowerCase().includes(kw))).length})
+                      </Typography>
+                      <Stack spacing={1.5}>
+                        {tasks
+                          .filter(t => !t.completed && !["urgent", "must", "asap", "immediate", "deadline", "api", "database"].some(kw => t.task.toLowerCase().includes(kw)))
+                          .map(task => renderKanbanCard(task))}
+                      </Stack>
+                    </Box>
+                  </Grid>
+
+                  {/* IN PROGRESS (High Priority) Column */}
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 1.5, backgroundColor: "#fff9f0", borderRadius: "8px", border: "1px solid #ffe8cc", minHeight: "350px" }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1.5, color: "#e28743", borderBottom: "2px solid #ffe8cc", pb: 0.5 }}>
+                        IN PROGRESS / HIGH ({tasks.filter(t => !t.completed && ["urgent", "must", "asap", "immediate", "deadline", "api", "database"].some(kw => t.task.toLowerCase().includes(kw))).length})
+                      </Typography>
+                      <Stack spacing={1.5}>
+                        {tasks
+                          .filter(t => !t.completed && ["urgent", "must", "asap", "immediate", "deadline", "api", "database"].some(kw => t.task.toLowerCase().includes(kw)))
+                          .map(task => renderKanbanCard(task))}
+                      </Stack>
+                    </Box>
+                  </Grid>
+
+                  {/* DONE Column */}
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 1.5, backgroundColor: "#f2fcf5", borderRadius: "8px", border: "1px solid #d3f9e5", minHeight: "350px" }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1.5, color: "#2e7d32", borderBottom: "2px solid #d3f9e5", pb: 0.5 }}>
+                        DONE ({tasks.filter(t => t.completed).length})
+                      </Typography>
+                      <Stack spacing={1.5}>
+                        {tasks
+                          .filter(t => t.completed)
+                          .map(task => renderKanbanCard(task))}
+                      </Stack>
+                    </Box>
+                  </Grid>
+                </Grid>
+              )
             ) : (
               <Typography color="textSecondary" variant="body2">No tasks extracted yet. Tasks are auto-generated when meetings conclude.</Typography>
             )}
