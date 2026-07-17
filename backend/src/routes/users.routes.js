@@ -4,6 +4,7 @@ import {
   getUserHistory,
   login,
   register,
+  sendInvitation,
 } from "../controllers/user.controller.js";
 import {
   getMeetingSummary,
@@ -28,6 +29,7 @@ router.route("/login").post(login);
 router.route("/register").post(register);
 router.route("/add_to_activity").post(addToHistory);
 router.route("/get_all_activity").get(getUserHistory);
+router.route("/send-invitation").post(sendInvitation);
 
 // New AI & Google Meet routes
 router.route("/meeting-summary").get(getMeetingSummary);

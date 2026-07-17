@@ -205,6 +205,33 @@ export default function VideoMeetComponent() {
     return `${m}:${s}`;
   };
 
+  const handleSendInvitations = async () => {
+    const targets = inviteEmail.trim() ? [inviteEmail, ...selectedSuggestions] : selectedSuggestions;
+    if (targets.length === 0) return;
+
+    try {
+      const response = await axios.post(`${server}/api/v1/users/send-invitation`, {
+        emails: targets,
+        meetingCode: window.location.pathname.substring(1),
+        senderName: username || "A user"
+      });
+
+      if (response.data.previewUrl) {
+        alert(`Invitation sent successfully! Since you are running in local test mode, you can view the sent email inbox here:\n\n${response.data.previewUrl}`);
+      } else {
+        alert(`Invitation sent successfully to ${targets.join(", ")}!`);
+      }
+      
+      // Clear state and close
+      setAddPeopleOpen(false);
+      setInviteEmail("");
+      setSelectedSuggestions([]);
+    } catch (err) {
+      console.error(err);
+      alert(`Error sending invitation: ${err.response?.data?.message || err.message}`);
+    }
+  };
+
   const meetingCode = window.location.pathname.substring(1);
 
   // Fetch meeting settings and validate expiration
@@ -2512,13 +2539,7 @@ export default function VideoMeetComponent() {
           <Button
             variant="contained"
             disabled={!inviteEmail.trim() && selectedSuggestions.length === 0}
-            onClick={() => {
-              const targets = inviteEmail.trim() ? [inviteEmail, ...selectedSuggestions] : selectedSuggestions;
-              alert(`Invitation sent successfully to: ${targets.join(", ")}`);
-              setAddPeopleOpen(false);
-              setInviteEmail("");
-              setSelectedSuggestions([]);
-            }}
+            onClick={handleSendInvitations}
             style={{
               backgroundColor: (!inviteEmail.trim() && selectedSuggestions.length === 0) ? "rgba(0,0,0,0.12)" : "#1a73e8",
               color: (!inviteEmail.trim() && selectedSuggestions.length === 0) ? "rgba(0,0,0,0.26)" : "#fff",
