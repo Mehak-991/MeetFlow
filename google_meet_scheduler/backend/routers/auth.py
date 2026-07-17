@@ -20,9 +20,11 @@ class CallbackRequest(BaseModel):
 @router.get("/url")
 def get_auth_url():
     scopes = [
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile",
-        "https://www.googleapis.com/auth/calendar"
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/calendar",
+        "https://www.googleapis.com/auth/calendar.events"
     ]
     scope_str = " ".join(scopes)
     
@@ -33,7 +35,8 @@ def get_auth_url():
         f"response_type=code&"
         f"scope={scope_str}&"
         f"access_type=offline&"
-        f"prompt=consent"
+        f"prompt=consent&"
+        f"include_granted_scopes=true"
     )
     return {"url": url}
 
