@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from .database.connection import engine, Base
-from .routers import auth, meetings, websockets
+from .routers import auth, meetings, websockets, ai
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(meetings.router)
 app.include_router(websockets.router)
+app.include_router(ai.router)
 
 @app.get("/")
 def read_root():

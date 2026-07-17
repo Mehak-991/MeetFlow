@@ -4,10 +4,11 @@ from typing import List, Optional
 from datetime import datetime, timezone
 
 from ..database.connection import get_db
-from ..models.models import Meeting, User
-from ..schemas.schemas import MeetingCreate, MeetingReschedule, MeetingResponse, MeetingOut
+from ..models.models import Meeting, User, Participant, MeetingNote, MeetingSummary
+from ..schemas.schemas import MeetingCreate, MeetingReschedule, MeetingResponse, MeetingOut, MeetingNoteCreate
 from ..utils.auth import get_current_user
 from ..services.calendar_service import create_meet_event, update_meet_event, delete_meet_event
+from .websockets import manager
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -175,3 +176,119 @@ def cancel_meeting(
     db.commit()
 
     return {"success": True, "message": "Meeting cancelled successfully"}
+
+@router.get("/{meeting_id}")
+def get_meeting_details(
+    meeting_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Fetch meeting
+    meeting = db.query(Meeting).filter(Meeting.id == meeting_id, Meeting.organizer_email == current_user.email).first()
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Meeting not found"
+        )
+
+    # 2. Get participants, notes, summaries
+    participants = db.query(Participant).filter(Participant.meeting_id == meeting_id).all()
+    notes = db.query(MeetingNote).filter(MeetingNote.meeting_id == meeting_id).order_by(MeetingNote.created_at.desc()).all()
+    summary = db.query(MeetingSummary).filter(MeetingSummary.meeting_id == meeting_id).order_by(MeetingSummary.created_at.desc()).first()
+
+    return {
+        "meeting": MeetingOut.model_validate(meeting),
+        "participants": [
+            {"id": p.id, "name": p.name, "email": p.email, "role": p.role, "joined_at": p.joined_at, "left_at": p.left_at}
+            for p in participants
+        ],
+        "notes": [
+            {"id": n.id, "content": n.content, "created_at": n.created_at}
+            for n in notes
+        ],
+        "summary": {
+            "summary_text": summary.summary_text,
+            "action_items": summary.action_items,
+            "key_decisions": summary.key_decisions,
+            "created_at": summary.created_at
+        } if summary else None
+    }
+
+@router.post("/{meeting_id}/notes")
+def add_meeting_note(
+    meeting_id: str,
+    body: MeetingNoteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    meeting = db.query(Meeting).filter(Meeting.id == meeting_id, Meeting.organizer_email == current_user.email).first()
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Meeting not found"
+        )
+
+    note = MeetingNote(
+        meeting_id=meeting_id,
+        content=body.content
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+
+    return {"success": True, "note": {"id": note.id, "content": note.content, "created_at": note.created_at}}
+
+@router.post("/{meeting_id}/join")
+async def join_meeting_sim(
+    meeting_id: str,
+    name: str,
+    email: str,
+    db: Session = Depends(get_db)
+):
+    # Verify meeting exists
+    meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    participant = Participant(
+        meeting_id=meeting_id,
+        name=name,
+        email=email,
+        role="guest"
+    )
+    db.add(participant)
+    db.commit()
+
+    # Broadcast to websocket
+    await manager.broadcast_to_meeting(meeting_id, {
+        "type": "JOIN",
+        "name": name,
+        "email": email,
+        "joined_at": datetime.now(timezone.utc).isoformat()
+    })
+
+    return {"success": True}
+
+@router.post("/{meeting_id}/leave")
+async def leave_meeting_sim(
+    meeting_id: str,
+    email: str,
+    db: Session = Depends(get_db)
+):
+    participant = db.query(Participant).filter(
+        Participant.meeting_id == meeting_id,
+        Participant.email == email,
+        Participant.left_at.is_(None)
+    ).first()
+
+    if participant:
+        participant.left_at = datetime.now(timezone.utc)
+        db.commit()
+
+    await manager.broadcast_to_meeting(meeting_id, {
+        "type": "LEAVE",
+        "email": email,
+        "left_at": datetime.now(timezone.utc).isoformat()
+    })
+
+    return {"success": True}

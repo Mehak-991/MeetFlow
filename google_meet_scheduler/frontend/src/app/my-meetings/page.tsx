@@ -410,6 +410,12 @@ export default function MyMeetings() {
                   ) : (
                     <>
                       <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => router.push(`/my-meetings/${meeting.id}`)}
+                          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <span>Workspace</span>
+                        </button>
                         {meeting.meet_link && meeting.status !== 'cancelled' && (
                           <>
                             <a
