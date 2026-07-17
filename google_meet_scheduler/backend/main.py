@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from .database.connection import engine, Base
-from .routers import auth, meetings, websockets, ai
+from .routers import auth, meetings, websockets, ai, admin, integrations
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,8 @@ app.include_router(auth.router)
 app.include_router(meetings.router)
 app.include_router(websockets.router)
 app.include_router(ai.router)
+app.include_router(admin.router)
+app.include_router(integrations.router)
 
 @app.get("/")
 def read_root():
@@ -45,6 +47,13 @@ def read_root():
         "status": "healthy",
         "service": "MeetFlow Meeting Scheduler Backend"
     }
+
+import asyncio
+from .services.sync_service import start_rsvp_sync_loop
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_rsvp_sync_loop())
 
 if __name__ == "__main__":
     import uvicorn

@@ -35,6 +35,7 @@ class MeetingOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    rsvp_stats: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -81,3 +82,6 @@ class MeetingSummaryOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class AttendeesBulkRequest(BaseModel):
+    emails: List[EmailStr]

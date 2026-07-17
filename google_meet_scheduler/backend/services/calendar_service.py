@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 import os
 import json
 from datetime import datetime, timezone
@@ -207,3 +208,139 @@ def delete_meet_event(user: User, db, event_id: str):
         print(f"[AUDIT] DELETE GOOGLE CALENDAR API ERROR: Code {error.resp.status}")
         print(f"Response: {error.content.decode('utf-8')}")
         raise error
+
+def sync_google_event_rsvps(user: User, db, event_id: str, meeting_id: str):
+    """
+    Fetches the latest event details from Google Calendar and updates local attendee RSVPs in database.
+    """
+    access_token = refresh_user_tokens(user, db)
+    
+    creds = google.oauth2.credentials.Credentials(
+        token=access_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET
+    )
+    
+    service = build("calendar", "v3", credentials=creds)
+    
+    try:
+        print(f"[AUDIT] Syncing RSVPs for Google Event {event_id} (Meeting {meeting_id})...")
+        event = service.events().get(calendarId='primary', eventId=event_id).execute()
+        
+        attendees = event.get('attendees', [])
+        print(f"[AUDIT] Found {len(attendees)} attendees on Google Calendar.")
+        
+        from ..models.models import Participant
+        
+        changed = False
+        synced_emails = []
+        now_utc = datetime.now(timezone.utc)
+        
+        for att in attendees:
+            email = att.get('email')
+            if not email:
+                continue
+            
+            response_status = att.get('responseStatus', 'needsAction')
+            display_name = att.get('displayName', '')
+            
+            synced_emails.append(email.lower())
+            
+            participant = db.query(Participant).filter(
+                Participant.meeting_id == meeting_id,
+                Participant.email.ilike(email)
+            ).first()
+            
+            if not participant:
+                # Create guest
+                participant = Participant(
+                    meeting_id=meeting_id,
+                    email=email.lower(),
+                    name=display_name or email.split("@")[0],
+                    role="guest",
+                    response_status=response_status,
+                    invitation_sent=True,
+                    invitation_sent_at=now_utc,
+                    last_synced=now_utc,
+                    sync_error=None
+                )
+                
+                # Apply initial timestamps
+                if response_status == 'accepted':
+                    participant.accepted_at = now_utc
+                elif response_status == 'declined':
+                    participant.declined_at = now_utc
+                elif response_status == 'tentative':
+                    participant.tentative_at = now_utc
+                    
+                db.add(participant)
+                changed = True
+            else:
+                # Sync updates
+                participant.sync_error = None
+                participant.last_synced = now_utc
+                
+                if participant.response_status != response_status:
+                    print(f"[AUDIT] Participant {email} status changed: {participant.response_status} -> {response_status}")
+                    participant.response_status = response_status
+                    
+                    if response_status == 'accepted':
+                        participant.accepted_at = now_utc
+                    elif response_status == 'declined':
+                        participant.declined_at = now_utc
+                    elif response_status == 'tentative':
+                        participant.tentative_at = now_utc
+                        
+                    changed = True
+                
+                if display_name and participant.name != display_name:
+                    participant.name = display_name
+                    changed = True
+                    
+        db.commit()
+        print(f"[AUDIT] RSVP sync completed successfully for meeting {meeting_id}.")
+        
+        # Broadcast via WebSocket if any status updated
+        if changed:
+            try:
+                from ..routers.websockets import manager
+                import asyncio
+                asyncio.create_task(manager.broadcast_to_meeting(meeting_id, {
+                    "type": "RSVP_UPDATE",
+                    "meeting_id": meeting_id
+                }))
+                print(f"[AUDIT] Live RSVP WebSocket broadcast dispatched.")
+            except Exception as ws_err:
+                print(f"[AUDIT] Failed to schedule WebSocket broadcast: {ws_err}")
+                
+        return True
+    except HttpError as error:
+        err_msg = error.content.decode('utf-8')
+        print(f"[AUDIT] RSVP SYNC ERROR: Code {error.resp.status}")
+        print(f"Response: {err_msg}")
+        
+        # Save sync error inside Participant records
+        try:
+            from ..models.models import Participant
+            db.query(Participant).filter(Participant.meeting_id == meeting_id).update(
+                {"sync_error": f"Google API Error {error.resp.status}: {err_msg}"},
+                synchronize_session=False
+            )
+            db.commit()
+        except Exception as db_err:
+            print(f"Failed to record sync error in DB: {db_err}")
+            
+        return False
+    except Exception as e:
+        print(f"[AUDIT] RSVP SYNC unexpected error: {e}")
+        try:
+            from ..models.models import Participant
+            db.query(Participant).filter(Participant.meeting_id == meeting_id).update(
+                {"sync_error": str(e)},
+                synchronize_session=False
+            )
+            db.commit()
+        except Exception:
+            pass
+        return False

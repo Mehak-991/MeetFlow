@@ -44,6 +44,12 @@ interface Meeting {
   status: 'scheduled' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
+  rsvp_stats?: {
+    accepted: number;
+    declined: number;
+    tentative: number;
+    pending: number;
+  };
 }
 
 export default function MyMeetings() {
@@ -354,13 +360,24 @@ export default function MyMeetings() {
                     </div>
                   </div>
 
-                  {/* Attendees */}
+                  {/* Attendees RSVP summary stats */}
                   {meeting.attendees && meeting.attendees.length > 0 && (
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <Mail className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs text-zinc-400">
-                        {meeting.attendees.length} {meeting.attendees.length === 1 ? 'guest' : 'guests'} invited
-                      </span>
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-zinc-500" />
+                        <span className="text-xs text-zinc-400 font-semibold">
+                          {meeting.attendees.length} {meeting.attendees.length === 1 ? 'guest' : 'guests'} invited
+                        </span>
+                      </div>
+                      
+                      {meeting.rsvp_stats && (
+                        <div className="flex flex-wrap gap-2 text-[10px] font-bold pl-5">
+                          <span className="text-emerald-400">Accepted {meeting.rsvp_stats.accepted || 0}</span>
+                          <span className="text-rose-450">Declined {meeting.rsvp_stats.declined || 0}</span>
+                          <span className="text-amber-400">Tentative {meeting.rsvp_stats.tentative || 0}</span>
+                          <span className="text-zinc-500">Pending {meeting.rsvp_stats.pending || 0}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
