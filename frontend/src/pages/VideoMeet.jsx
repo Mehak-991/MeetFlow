@@ -54,7 +54,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import server from "../environment";
 
 import styles from "../styles/videoComponent.module.css";
-
+import PeopleSidebar from "../components/PeopleSidebar";
 const server_url = process.env.REACT_APP_SOCKET_URL || "https://meetflow-z69w.onrender.com";
 
 var connections = {};
@@ -2350,75 +2350,13 @@ export default function VideoMeetComponent() {
           </AnimatePresence>
 
           {/* PEOPLE PANEL — animated, RIGHT side */}
-          <AnimatePresence>
-            {showPeopleModal && (
-            <motion.aside
-              key="people-panel"
-              initial={{ x: 360, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 360, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              style={{
-                width: "360px",
-                flexShrink: 0,
-                backgroundColor: "#1e1e1f",
-                borderLeft: "1px solid rgba(255,255,255,0.08)",
-                padding: "20px",
-                display: "flex",
-                flexDirection: "column",
-                height: "100vh",
-                boxSizing: "border-box",
-                overflow: "hidden",
-                position: "relative",
-                zIndex: 90,
-                boxShadow: "-4px 0 24px rgba(0,0,0,0.4)"
-              }}
-            >
-              {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <span style={{ fontSize: "16px", fontWeight: "600", color: "#fff" }}>People</span>
-                <button onClick={() => setShowPeopleModal(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>×</button>
-              </div>
-
-              <Button variant="contained" onClick={() => setAddPeopleOpen(true)} startIcon={<span>👤+</span>}
-                style={{ backgroundColor: "#018CCB", color: "#fff", textTransform: "none", borderRadius: "24px", fontSize: "13px", fontWeight: "bold", marginBottom: "16px" }}
-                fullWidth>
-                Add people
-              </Button>
-
-              <div style={{ marginBottom: "16px" }}>
-                <TextField placeholder="Search for people" variant="outlined" size="small" fullWidth
-                  InputProps={{ style: { color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: "8px" } }}
-                />
-              </div>
-
-              <div style={{ flex: 1, overflowY: "auto" }}>
-                <div style={{ fontSize: "11px", fontWeight: "bold", color: "#888", marginBottom: "12px", textTransform: "uppercase" }}>In call</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#e91e63", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", color: "#fff" }}>
-                      {username ? username.charAt(0).toUpperCase() : "U"}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "13px", color: "#fff", fontWeight: "500" }}>{username || "You"}</div>
-                      <div style={{ fontSize: "11px", color: "#888" }}>Meeting host</div>
-                    </div>
-                  </div>
-                  <IconButton size="small" style={{ color: "#fff" }}>⋮</IconButton>
-                </div>
-                {videos.map((v) => (
-                  <div key={v.socketId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#018CCB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", color: "#fff" }}>P</div>
-                      <div style={{ fontSize: "13px", color: "#fff", fontWeight: "500" }}>Guest ({v.socketId.substring(0, 5)})</div>
-                    </div>
-                    <IconButton size="small" style={{ color: "#fff" }}>⋮</IconButton>
-                  </div>
-                ))}
-              </div>
-            </motion.aside>
-            )}
-          </AnimatePresence>
+          <PeopleSidebar 
+            isOpen={showPeopleModal} 
+            onClose={() => setShowPeopleModal(false)}
+            onAddPeople={() => setAddPeopleOpen(true)}
+            username={username}
+            videos={videos}
+          />
         </div>
       )}
 
