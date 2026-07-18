@@ -260,9 +260,24 @@ export const createScheduledMeeting = async (req, res) => {
 export const checkMeeting = async (req, res) => {
   const { meetingCode } = req.params;
   try {
-    const meeting = await Meeting.findOne({ meetingCode });
+    let meeting = await Meeting.findOne({ meetingCode });
+    
+    // If meeting doesn't exist in DB (e.g. someone joined via invite link before host registered it),
+    // auto-create a permissive guest record so invited candidates are not blocked
     if (!meeting) {
-      return res.status(404).json({ message: "Meeting not found" });
+      meeting = new Meeting({
+        meetingCode: meetingCode,
+        meetingId: meetingCode,
+        hostId: null,  // No fixed host - first person to claim can become host
+        status: "ACTIVE",
+        waitingRoomEnabled: false,
+        isLocked: false,
+        isChatDisabled: false,
+        isScreenShareDisabled: false,
+        isMutedAll: false,
+        createdAt: new Date(),
+      });
+      await meeting.save();
     }
 
     if (meeting.expiresAt && new Date() > new Date(meeting.expiresAt)) {

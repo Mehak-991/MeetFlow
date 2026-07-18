@@ -173,6 +173,7 @@ export default function VideoMeetComponent() {
   // Add People Dialog Spacing & State
   const [addPeopleOpen, setAddPeopleOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [isGroupEmail, setIsGroupEmail] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState([]);
   const suggestionsList = [
     { name: "Mohit Kumar Singh", email: "mohit.singh@techolution.com", initials: "MS" },
@@ -213,7 +214,8 @@ export default function VideoMeetComponent() {
       const response = await axios.post(`${server}/api/v1/users/send-invitation`, {
         emails: targets,
         meetingCode: window.location.pathname.substring(1),
-        senderName: username || "A user"
+        senderName: username || "A user",
+        isGroupEmail: isGroupEmail
       });
 
       if (response.data.previewUrl) {
@@ -244,11 +246,13 @@ export default function VideoMeetComponent() {
           setIsExpired(true);
           return;
         }
-        if (data.isLocked && data.hostId !== username) {
+        // Only block if meeting is locked AND has a known host who isn't the current user.
+        // If hostId is null (auto-created for invited candidates), don't block anyone.
+        if (data.isLocked && data.hostId && data.hostId !== username) {
           setMeetingError("This meeting room has been locked by the host.");
           return;
         }
-        setIsHost(data.hostId === username);
+        setIsHost(!!data.hostId && data.hostId === username);
         setIsChatDisabled(data.isChatDisabled);
         setIsScreenShareDisabled(data.isScreenShareDisabled);
         setIsMeetingLocked(data.isLocked);
@@ -2473,7 +2477,11 @@ export default function VideoMeetComponent() {
         </div>
 
         {/* Action Button */}
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <FormControlLabel
+            control={<Checkbox size="small" checked={isGroupEmail} onChange={(e) => setIsGroupEmail(e.target.checked)} color="primary" />}
+            label={<span style={{ fontSize: "13px", color: "#5f6368", fontWeight: 500 }}>Send as group email</span>}
+          />
           <Button
             variant="contained"
             disabled={!inviteEmail.trim() && selectedSuggestions.length === 0}

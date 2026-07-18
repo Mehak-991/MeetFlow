@@ -96,15 +96,32 @@ const addToHistory = async (req, res) => {
 };
 
 const sendInvitation = async (req, res) => {
-  const { emails, meetingCode, senderName } = req.body;
+  const { emails, meetingCode, senderName, isGroupEmail } = req.body;
 
   if (!emails || !meetingCode) {
     return res.status(400).json({ message: "Missing required fields: emails and meetingCode" });
   }
 
-  const recipients = Array.isArray(emails) ? emails.join(", ") : emails;
-  const joinUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/${meetingCode}`;
+  // Ensure emails is an array and flatten any comma-separated strings inside it
+  let emailArray = [];
+  if (Array.isArray(emails)) {
+    emails.forEach(e => {
+       if (typeof e === 'string') {
+         emailArray.push(...e.split(',').map(str => str.trim()).filter(str => str));
+       }
+    });
+  } else if (typeof emails === 'string') {
+    emailArray = emails.split(',').map(str => str.trim()).filter(str => str);
+  }
 
+  // Deduplicate emails
+  emailArray = [...new Set(emailArray)];
+
+  if (emailArray.length === 0) {
+    return res.status(400).json({ message: "No valid emails provided" });
+  }
+
+  const joinUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/${meetingCode}`;
   const subject = `${senderName || "Someone"} is inviting you to join a MeetFlow meeting`;
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 8px;">
@@ -121,10 +138,24 @@ const sendInvitation = async (req, res) => {
   `;
 
   try {
-    const result = await sendEmail({ to: recipients, subject, html });
+    let previewUrl = null;
+    
+    if (isGroupEmail) {
+      // Send as one group email (everyone sees each other in the To field)
+      const groupRecipients = emailArray.join(", ");
+      const result = await sendEmail({ to: groupRecipients, subject, html });
+      if (result.previewUrl) previewUrl = result.previewUrl;
+    } else {
+      // Send individual emails to avoid SMTP grouping/spam issues
+      for (const email of emailArray) {
+        const result = await sendEmail({ to: email, subject, html });
+        if (result.previewUrl) previewUrl = result.previewUrl;
+      }
+    }
+
     return res.status(httpStatus.OK).json({ 
-      message: "Invitation sent successfully", 
-      previewUrl: result.previewUrl 
+      message: isGroupEmail ? "Group invitation sent successfully" : "Individual invitations sent successfully", 
+      previewUrl: previewUrl 
     });
   } catch (error) {
     return res.status(500).json({ message: `Failed to send email: ${error.message}` });
