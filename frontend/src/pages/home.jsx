@@ -323,6 +323,24 @@ END:VCALENDAR`;
             Analytics
           </Button>
 
+          {/* Google Calendar Scheduler — migrated from google_meet_scheduler */}
+          <Button
+            onClick={() => navigate("/google-login")}
+            variant="outlined"
+            sx={{
+              color: "#018CCB",
+              borderColor: "#018CCB",
+              textTransform: "none",
+              fontWeight: 600,
+              fontSize: "13px",
+              borderRadius: "8px",
+              px: 1.5,
+              "&:hover": { backgroundColor: "rgba(1,140,203,0.08)" }
+            }}
+          >
+            📅 Cal Schedule
+          </Button>
+
           <Button
             onClick={handleLogout}
             startIcon={<LogoutIcon />}

@@ -1,3 +1,8 @@
+/* Tailwind CSS — required for scheduler pages migrated from google_meet_scheduler */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 * {
   margin: 0;
   padding: 0;

@@ -78,20 +78,30 @@ app.use(express.json({ limit: "40kb" }));
 app.use(express.urlencoded({ extended: true, limit: "40kb" }));
 
 // Register API routes
-app.use("/api/v1/users", userRoutes);
+// The router now carries its own full path prefixes:
+//   /api/v1/users/*   — auth, history, AI (existing)
+//   /api/auth/google/* — Google OAuth (migrated from Python scheduler)
+//   /api/calendar/*    — Google Calendar meetings (migrated from Python scheduler)
+app.use("/", userRoutes);
 
 // Root route - basic health check endpoint
 app.get("/", (req, res) => {
   res.status(200).json({
     message: "MeetFlow API Server",
     status: "Running",
-    version: "1.0.0",
+    version: "2.0.0",
+    features: [
+      "Authentication",
+      "WebRTC + Socket.IO",
+      "AI Summaries",
+      "Google Calendar Integration",
+      "Google OAuth",
+    ],
   });
 });
 
-// Simple test route
-app.get("/home", (req, res) => {
-  res.status(200).send("Hello World!");
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "healthy" });
 });
 
 /**
