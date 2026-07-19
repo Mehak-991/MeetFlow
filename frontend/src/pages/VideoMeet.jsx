@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import io from "socket.io-client";
 import {
   Badge,
@@ -8,15 +8,11 @@ import {
   CircularProgress,
   Switch,
   FormControlLabel,
-  List,
-  ListItem,
-  ListItemText,
   Divider,
   Button,
   Checkbox,
   Box,
   Typography,
-  Stack,
   Card,
   CardContent,
   Select,
@@ -26,7 +22,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Paper,
   Menu
 } from "@mui/material";
 import VideocamIcon from "@mui/icons-material/Videocam";
@@ -37,15 +32,12 @@ import MicOffIcon from "@mui/icons-material/MicOff";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
 import StopScreenShareIcon from "@mui/icons-material/StopScreenShare";
 import ChatIcon from "@mui/icons-material/Chat";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import BlurOnIcon from "@mui/icons-material/BlurOn";
 import BlurOffIcon from "@mui/icons-material/BlurOff";
 import HearingIcon from "@mui/icons-material/Hearing";
 import PresentToAllIcon from "@mui/icons-material/PresentToAll";
 import LaptopIcon from "@mui/icons-material/Laptop";
-import InfoIcon from "@mui/icons-material/Info";
-import ShareIcon from "@mui/icons-material/Share";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
@@ -89,8 +81,6 @@ export default function VideoMeetComponent() {
   const [showPeopleModal, setShowPeopleModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Derived: any side panel open?
-  const isPanelOpen = showModal || showPeopleModal;
 
   let [screenAvailable, setScreenAvailable] = useState();
 
@@ -124,7 +114,6 @@ export default function VideoMeetComponent() {
 
   // Lobby / Waiting Room states
   const [inLobby, setInLobby] = useState(false);
-  const [waitingList, setWaitingList] = useState([]);
   const [isHost, setIsHost] = useState(false);
 
   // Synced Host Permissions
@@ -140,7 +129,9 @@ export default function VideoMeetComponent() {
   const [backgroundBlur, setBackgroundBlur] = useState(false);
   const [noiseSuppression, setNoiseSuppression] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
+  // eslint-disable-next-line no-unused-vars
   const [companionMode, setCompanionMode] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [presentOnly, setPresentOnly] = useState(false);
 
   // Web Audio refs for real-time mic test & noise suppression filter
@@ -157,7 +148,6 @@ export default function VideoMeetComponent() {
 
   // Google Meet UI Interactivity States
   const [isHandRaised, setIsHandRaised] = useState(false);
-  const [raisedHands, setRaisedHands] = useState({});
   const [showCaptions, setShowCaptions] = useState(false);
   const [captionText, setCaptionText] = useState("");
   const [floatingEmojis, setFloatingEmojis] = useState([]);
@@ -211,6 +201,7 @@ export default function VideoMeetComponent() {
     const s = (sec % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   };
+  // meetingDuration drives the timer shown in the control bar
 
   const handleSendInvitations = async () => {
     const targets = inviteEmail.trim() ? [inviteEmail, ...selectedSuggestions] : selectedSuggestions;
@@ -250,9 +241,7 @@ export default function VideoMeetComponent() {
     : rawPath.substring(1);             // legacy /:url route — just strip the "/"
   console.log("[MeetFlow] meetingCode from URL:", meetingCode, "| rawPath:", rawPath);
 
-  // ── FIX: Read userId from localStorage (set on login) ─────────────────────
-  // Used for host detection: meeting.hostId === storedUserId
-  const storedUserId = localStorage.getItem("userId") || "";
+  // ── FIX: userId is read directly inside connectToSocketServer ────────────
 
   // Fetch meeting settings and validate expiration
   useEffect(() => {
@@ -311,10 +300,10 @@ export default function VideoMeetComponent() {
     } else {
       setMeetingLoading(false);
     }
-  }, [askForUsername, username, meetingCode]);
+  }, [askForUsername, username, meetingCode, getMedia]);
 
   // Enumerate active devices
-  const getDevices = async () => {
+  const getDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevs = devices.filter(d => d.kind === "videoinput");
@@ -326,12 +315,12 @@ export default function VideoMeetComponent() {
     } catch (e) {
       console.error("Error enumerating devices:", e);
     }
-  };
+  }, [selectedVideo, selectedAudio]);
 
   useEffect(() => {
     getDevices();
     navigator.mediaDevices.ondevicechange = getDevices;
-  }, []);
+  }, [getDevices]);
 
   const handleDeviceChange = async (videoDeviceId, audioDeviceId) => {
     try {
@@ -536,7 +525,7 @@ export default function VideoMeetComponent() {
         recognitionRef.current.stop();
       }
     };
-  }, [askForUsername, audio, username]);
+  }, [askForUsername, audio, username, handleScreen, handleRaiseHand]);
 
   const downloadTranscript = (format = "txt") => {
     const textContent = transcripts.map(t => `[${t.speaker}]: ${t.text}`).join("\n");
@@ -649,11 +638,12 @@ export default function VideoMeetComponent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [video, audio]);
 
-  let getMedia = () => {
+  const getMedia = useCallback(() => {
     setVideo(videoAvailable);
     setAudio(audioAvailable);
     connectToSocketServer();
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoAvailable, audioAvailable]);
 
   let getUserMediaSuccess = (stream) => {
     try {
@@ -1030,13 +1020,13 @@ export default function VideoMeetComponent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
-  let handleScreen = () => {
+  const handleScreen = useCallback(() => {
     if (isScreenShareDisabled && !isHost) {
       alert("Screen sharing has been disabled by the host.");
       return;
     }
-    setScreen(!screen);
-  };
+    setScreen(prev => !prev);
+  }, [isScreenShareDisabled, isHost]);
 
   let handleEndCall = () => {
     try {
@@ -1091,38 +1081,17 @@ export default function VideoMeetComponent() {
     setCopySnackbar(true);
   };
 
-  // Host Action Emit Triggers
-  const handleHostMuteAll = () => {
-    if (socketRef.current) socketRef.current.emit("mute-everyone", meetingCode);
-  };
-
   const handleHostToggleChat = () => {
     if (socketRef.current) socketRef.current.emit("toggle-chat", meetingCode, !isChatDisabled);
   };
 
-  const handleHostToggleScreenShare = () => {
-    if (socketRef.current) socketRef.current.emit("toggle-screenshare", meetingCode, !isScreenShareDisabled);
-  };
-
-  const handleHostToggleLock = () => {
-    if (socketRef.current) socketRef.current.emit("toggle-lock", meetingCode, !isMeetingLocked);
-  };
-
-  const handleHostRemoveParticipant = (id) => {
-    if (socketRef.current) socketRef.current.emit("remove-participant", meetingCode, id);
-  };
-
-  const handleHostEndMeetingAll = () => {
-    if (socketRef.current) socketRef.current.emit("end-meeting-all", meetingCode);
-  };
-
-  const handleRaiseHand = () => {
+  const handleRaiseHand = useCallback(() => {
     const nextState = !isHandRaised;
     setIsHandRaised(nextState);
     if (socketRef.current) {
       socketRef.current.emit("raise-hand", meetingCode, nextState);
     }
-  };
+  }, [isHandRaised, meetingCode]);
   const getInitials = (name = "") => {
     if (!name.trim()) return "?";
     const parts = name.trim().split(" ");
@@ -1208,13 +1177,6 @@ export default function VideoMeetComponent() {
     }
   };
 
-  const handleHostLobbyDecision = (id, approved) => {
-    if (socketRef.current) socketRef.current.emit("host-decision", meetingCode, id, approved);
-  };
-
-  const handleHostLobbyApproveAll = () => {
-    if (socketRef.current) socketRef.current.emit("approve-all", meetingCode);
-  };
 
   // -------------------- RENDER --------------------
   if (meetingLoading) {
