@@ -3,6 +3,7 @@ import { User } from "../models/user.model.js";
 import { Meeting } from "../models/meeting.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { sendEmail } from "../services/emailService.js";
 
 // ---------------------------------------------------------------------------
@@ -23,9 +24,17 @@ const login = async (req, res) => {
     if (!isPasswordCorrect) {
       return res.status(httpStatus.UNAUTHORIZED).json({ message: "Invalid username or password" });
     }
-    const token = crypto.randomBytes(20).toString("hex");
-    user.token = token;
+    
+    // Generate secure JWT instead of random hex
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      process.env.JWT_SECRET || "default_fallback_secret",
+      { expiresIn: "7d" }
+    );
+    
+    user.token = token; // Store in db for compatibility with existing check-meeting token lookup
     await user.save();
+    
     // Return token AND userId so the frontend can use userId for host comparison
     return res.status(httpStatus.OK).json({
       token,

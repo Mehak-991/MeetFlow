@@ -36,6 +36,8 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 | 🖥️ Screen Sharing | Share screen with participants |
 | 👥 Multi-Participant Meetings | Support for multiple users |
 | 🔐 Secure Authentication | Login and registration system |
+| 📅 Google Calendar Sync | Automatically schedule and sync meetings with Google Calendar |
+| 📧 Email Invitations | Automated email invites with meeting details |
 | 🌗 Dark / Light Mode | UI theme toggle |
 | 🔑 Meeting Code Join | Join meeting via code |
 | 📱 Responsive Design | Works across devices |
@@ -72,6 +74,7 @@ Built using **React, Node.js, WebRTC, and Socket.io**, MeetFlow provides a simpl
 | Socket.io | WebSocket communication |
 | MongoDB | NoSQL database |
 | JWT | Authentication tokens |
+| Google APIs | OAuth2 and Calendar integrations |
 | bcrypt | Password hashing |
 
 ---

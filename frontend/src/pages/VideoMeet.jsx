@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 import {
   Badge,
@@ -60,7 +60,13 @@ const server_url = process.env.REACT_APP_SOCKET_URL || "https://meetflow-z69w.on
 var connections = {};
 
 const peerConfigConnections = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    // Enterprise TURN Server (Uncomment and replace with real credentials)
+    // { urls: "turn:turn.example.com:3478", username: "user", credential: "password" }
+  ],
 };
 
 export default function VideoMeetComponent() {

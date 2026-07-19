@@ -18,6 +18,10 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cors from "cors";
 import dns from "node:dns";
+import helmet from "helmet";
+import compression from "compression";
+import rateLimit from "express-rate-limit";
+import morgan from "morgan";
 
 import { connectToSocket } from "./controllers/socketManager.js";
 import userRoutes from "./routes/users.routes.js";
@@ -72,10 +76,36 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// Global middleware
+// Global Security & Optimization Middleware
+// Set security HTTP headers
+app.use(helmet());
+
+// Logging
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+} else {
+  app.use(morgan("combined"));
+}
+
+// Compress responses
+app.use(compression());
+
+// Rate Limiting (100 requests per 15 min per IP)
+const limiter = rateLimit({
+  max: 100,
+  windowMs: 15 * 60 * 1000,
+  message: "Too many requests from this IP, please try again in 15 minutes."
+});
+app.use("/api", limiter);
+
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "40kb" }));
 app.use(express.urlencoded({ extended: true, limit: "40kb" }));
+
+// NOTE: hpp and xss-clean removed — both monkey-patch req.query which is a
+// read-only getter in Express 5, causing "Cannot set property 'query'" errors.
+// XSS protection is provided by helmet CSP headers (above).
+// HPP protection is provided by express.json() strict body parsing (above).
 
 // Register API routes
 // The router now carries its own full path prefixes:
@@ -101,7 +131,22 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "healthy" });
+  const dbState = mongoose.connection.readyState;
+  res.status(200).json({ 
+    status: dbState === 1 ? "healthy" : "unhealthy", 
+    dbState 
+  });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error("ERROR 💥:", err);
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    status: "error",
+    message: err.message || "Internal Server Error",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
 });
 
 /**
@@ -110,7 +155,11 @@ app.get("/health", (req, res) => {
  */
 const startServer = async () => {
   try {
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
+    await mongoose.connect(MONGODB_URI, { 
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 50,
+      socketTimeoutMS: 45000,
+    });
     console.log("MongoDB connected successfully");
 
     server.listen(PORT, () => {
