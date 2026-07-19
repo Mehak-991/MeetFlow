@@ -1,10 +1,10 @@
 import { Router } from "express";
 import {
-  addToHistory,
-  getUserHistory,
   login,
   register,
-  sendInvitation,
+  getUserHistory,
+  addToHistory,
+  sendInvitation
 } from "../controllers/user.controller.js";
 import {
   getMeetingSummary,
@@ -24,26 +24,42 @@ import {
 
 const router = Router();
 
-// Existing Auth routes
-router.route("/login").post(login);
-router.route("/register").post(register);
-router.route("/add_to_activity").post(addToHistory);
-router.route("/get_all_activity").get(getUserHistory);
-router.route("/send-invitation").post(sendInvitation);
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+router.post("/login",    login);
+router.post("/register", register);
 
-// New AI & Google Meet routes
-router.route("/meeting-summary").get(getMeetingSummary);
-router.route("/meeting-tasks").get(getMeetingTasks);
-router.route("/meeting-tasks/:taskId").put(updateTask).delete(deleteTask);
-router.route("/meeting-analytics").get(getMeetingAnalytics);
-router.route("/meeting-assistant").post(askMeeting);
-router.route("/trigger-ai").post(triggerAIProcessing);
-router.route("/smart-search").get(smartSearch);
-router.route("/dashboard-insights").get(getDashboardInsights);
+// ---------------------------------------------------------------------------
+// Meeting history
+// ---------------------------------------------------------------------------
+router.post("/add_to_activity", addToHistory);
+router.get("/get_all_activity", getUserHistory);
 
-router.route("/create-scheduled-meeting").post(createScheduledMeeting);
-router.route("/check-meeting/:meetingCode").get(checkMeeting);
-router.route("/validate-meeting-password").post(validateMeetingPassword);
-router.route("/update-meeting-settings").post(updateMeetingSettings);
+// ---------------------------------------------------------------------------
+// Invitations
+// ---------------------------------------------------------------------------
+router.post("/send-invitation", sendInvitation);
+
+// ---------------------------------------------------------------------------
+// Meeting lifecycle (Node.js is the ONLY backend)
+// ---------------------------------------------------------------------------
+router.post("/create-scheduled-meeting",     createScheduledMeeting);
+router.get("/check-meeting/:meetingCode",    checkMeeting);
+router.post("/validate-meeting-password",    validateMeetingPassword);
+router.post("/update-meeting-settings",      updateMeetingSettings);
+
+// ---------------------------------------------------------------------------
+// AI features
+// ---------------------------------------------------------------------------
+router.get("/meeting-summary",               getMeetingSummary);
+router.get("/meeting-tasks",                 getMeetingTasks);
+router.put("/meeting-tasks/:taskId",         updateTask);
+router.delete("/meeting-tasks/:taskId",      deleteTask);
+router.get("/meeting-analytics",             getMeetingAnalytics);
+router.post("/meeting-assistant",            askMeeting);
+router.post("/trigger-ai",                   triggerAIProcessing);
+router.get("/smart-search",                  smartSearch);
+router.get("/dashboard-insights",            getDashboardInsights);
 
 export default router;

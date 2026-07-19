@@ -12,19 +12,12 @@ const client = axios.create({
 
 export const AuthProvider = ({ children }) => {
   const authContext = useContext(AuthContext);
-
   const [userData, setUserData] = useState(authContext);
-
   const router = useNavigate();
 
   const handleRegister = async (name, username, password) => {
     try {
-      let request = await client.post("/register", {
-        name: name,
-        username: username,
-        password: password,
-      });
-
+      const request = await client.post("/register", { name, username, password });
       if (request.status === httpStatus.CREATED) {
         return request.data.message;
       }
@@ -35,16 +28,13 @@ export const AuthProvider = ({ children }) => {
 
   const handleLogin = async (username, password) => {
     try {
-      let request = await client.post("/login", {
-        username: username,
-        password: password,
-      });
-
-      console.log(username, password);
-      console.log(request.data);
-
+      const request = await client.post("/login", { username, password });
       if (request.status === httpStatus.OK) {
-        localStorage.setItem("token", request.data.token);
+        // Store token, userId, and username — userId is used for host detection
+        localStorage.setItem("token",    request.data.token);
+        localStorage.setItem("userId",   request.data.userId);
+        localStorage.setItem("username", request.data.username);
+        localStorage.setItem("name",     request.data.name || request.data.username);
         router("/home");
       }
     } catch (err) {
@@ -52,12 +42,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("username");
+    localStorage.removeItem("name");
+    router("/auth");
+  };
+
   const getHistoryOfUser = async () => {
     try {
-      let request = await client.get("/get_all_activity", {
-        params: {
-          token: localStorage.getItem("token"),
-        },
+      const request = await client.get("/get_all_activity", {
+        params: { token: localStorage.getItem("token") },
       });
       return request.data;
     } catch (err) {
@@ -67,7 +63,7 @@ export const AuthProvider = ({ children }) => {
 
   const addToUserHistory = async (meetingCode) => {
     try {
-      let request = await client.post("/add_to_activity", {
+      const request = await client.post("/add_to_activity", {
         token: localStorage.getItem("token"),
         meeting_code: meetingCode,
       });
@@ -84,6 +80,7 @@ export const AuthProvider = ({ children }) => {
     getHistoryOfUser,
     handleRegister,
     handleLogin,
+    handleLogout,
   };
 
   return <AuthContext.Provider value={data}>{children}</AuthContext.Provider>;

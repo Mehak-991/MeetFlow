@@ -1,3 +1,21 @@
+/**
+ * socketManager.js
+ * 
+ * WebRTC signaling, chat, transcription, waiting room, host permissions.
+ * 
+ * HOST DETECTION: meeting.hostId === socket.userId
+ *   - userId is the MongoDB User._id (string), sent from frontend on join-call.
+ *   - Never compare by username string for host checks.
+ * 
+ * Socket join flow:
+ *   1. Client emits "join-call" with { path, username, userId }
+ *   2. Server loads meeting from MongoDB
+ *   3. Verifies meeting exists and is ACTIVE
+ *   4. Compares userId with meeting.hostId to determine host
+ *   5. If waitingRoom enabled and not host → put in lobby
+ *   6. Otherwise → admit to WebRTC room
+ */
+
 import { Server } from "socket.io";
 import { Transcript } from "../models/transcript.model.js";
 import { Meeting } from "../models/meeting.model.js";
@@ -6,204 +24,161 @@ import { generateSummary } from "../services/summaryService.js";
 import { extractTasks } from "../services/taskExtractionService.js";
 import { generateAnalytics } from "../services/analyticsService.js";
 
-let connections = {};
-let messages = {};
-let timeOnline = {};
+// In-memory state (per server instance)
+let connections   = {};    // { [meetingCode]: [socketId, ...] }
+let messages      = {};    // { [meetingCode]: [{sender, data, socket-id-sender}] }
+let timeOnline    = {};    // { [socketId]: Date }
+let waitingLobbies = {};   // { [meetingCode]: [{socketId, username, userId}] }
+let hostSockets    = {};   // { [meetingCode]: [socketId, ...] }
 
-// Google Meet lobbies & permissions dictionaries
-let waitingLobbies = {}; // { [meetingCode]: [{ socketId, username }] }
-let hostSockets = {};    // { [meetingCode]: [socketId] }
-let socketUsernames = {}; // { [socketId]: username }
+// Per-socket metadata
+let socketMeta = {};       // { [socketId]: { username, userId, meetingCode } }
 
 export const connectToSocket = (server) => {
   const io = new Server(server, {
     cors: {
       origin: process.env.FRONTEND_URL || "*",
       methods: ["GET", "POST"],
-      credentials: true,
-    },
+      credentials: true
+    }
   });
 
   io.on("connection", (socket) => {
-    console.log("SOMETHING CONNECTED:", socket.id);
+    console.log(`[Socket] Connected: ${socket.id}`);
 
-    socket.on("join-call", async (path, username) => {
-      socketUsernames[socket.id] = username;
-      
-      // Extract meetingCode from the URL path
-      const urlParts = path.split("/");
-      const meetingCode = urlParts[urlParts.length - 1];
+    // ------------------------------------------------------------------
+    // join-call: authenticate + load meeting + route to lobby or room
+    // ------------------------------------------------------------------
+    socket.on("join-call", async (path, username, userId) => {
+      // Extract meetingCode from path (handles /meeting/CODE or /CODE)
+      const pathParts = path.split("/");
+      const meetingCode = pathParts[pathParts.length - 1];
+
+      socketMeta[socket.id] = { username, userId, meetingCode };
 
       try {
         const meeting = await Meeting.findOne({ meetingCode });
-        const isHost = meeting ? (meeting.hostId === username) : false;
 
-        if (isHost) {
-          if (!hostSockets[meetingCode]) {
-            hostSockets[meetingCode] = [];
-          }
-          hostSockets[meetingCode].push(socket.id);
-        }
-
-        // Check if waiting room is enabled and user is NOT host
-        if (meeting?.waitingRoomEnabled && !isHost) {
-          if (!waitingLobbies[meetingCode]) {
-            waitingLobbies[meetingCode] = [];
-          }
-          
-          // Add to waiting queue
-          waitingLobbies[meetingCode].push({ socketId: socket.id, username });
-          
-          // Notify the participant they are in the waiting lobby
-          socket.emit("waiting-room-joined");
-
-          // Notify all host sockets in the room about the new waiting list
-          if (hostSockets[meetingCode]) {
-            hostSockets[meetingCode].forEach((hostId) => {
-              io.to(hostId).emit("waiting-room-list", waitingLobbies[meetingCode]);
-            });
-          }
+        if (!meeting) {
+          socket.emit("error-message", "Meeting not found.");
           return;
         }
 
-        // If no waiting room, proceed with joining room directly
+        if (meeting.meetingStatus === "EXPIRED" || meeting.meetingStatus === "ENDED") {
+          socket.emit("error-message", `Meeting is ${meeting.meetingStatus.toLowerCase()}.`);
+          return;
+        }
+
+        // Correct host check: compare MongoDB _id (as string)
+        const isHost = !!userId && meeting.hostId === userId;
+
+        if (isHost) {
+          if (!hostSockets[meetingCode]) hostSockets[meetingCode] = [];
+          hostSockets[meetingCode].push(socket.id);
+        }
+
+        // Waiting room check: applies to guests only
+        if (meeting.waitingRoomEnabled && !isHost) {
+          if (!waitingLobbies[meetingCode]) waitingLobbies[meetingCode] = [];
+          waitingLobbies[meetingCode].push({ socketId: socket.id, username, userId });
+
+          socket.emit("waiting-room-joined");
+
+          // Notify host(s) about updated waiting list
+          broadcastToHosts(io, meetingCode, "waiting-room-list", waitingLobbies[meetingCode]);
+          return;
+        }
+
+        // Admit directly
         await admitParticipant(io, socket, meetingCode, username);
       } catch (err) {
-        console.error("Error in join-call handler:", err);
+        console.error("[Socket] join-call error:", err);
+        socket.emit("error-message", "Failed to join meeting. Please try again.");
       }
     });
 
-    // Host decision on waiting participant (approve/reject)
+    // ------------------------------------------------------------------
+    // Host waiting room decisions
+    // ------------------------------------------------------------------
     socket.on("host-decision", async (meetingCode, participantSocketId, approved) => {
-      // Security check: Verify sender is actually a host of the meeting
-      const meeting = await Meeting.findOne({ meetingCode });
-      const hostUsername = socketUsernames[socket.id];
-      if (meeting?.hostId !== hostUsername) {
-        return socket.emit("error-message", "Only hosts can manage waiting room.");
+      if (!isSocketHost(socket.id, meetingCode)) {
+        return socket.emit("error-message", "Only the host can manage the waiting room.");
       }
 
       if (!waitingLobbies[meetingCode]) return;
 
-      const participantIndex = waitingLobbies[meetingCode].findIndex(
+      const idx = waitingLobbies[meetingCode].findIndex(
         (p) => p.socketId === participantSocketId
       );
+      if (idx === -1) return;
 
-      if (participantIndex !== -1) {
-        const participant = waitingLobbies[meetingCode][participantIndex];
-        
-        // Remove from waiting queue
-        waitingLobbies[meetingCode].splice(participantIndex, 1);
+      const participant = waitingLobbies[meetingCode].splice(idx, 1)[0];
+      broadcastToHosts(io, meetingCode, "waiting-room-list", waitingLobbies[meetingCode]);
 
-        // Update host list
-        if (hostSockets[meetingCode]) {
-          hostSockets[meetingCode].forEach((hostId) => {
-            io.to(hostId).emit("waiting-room-list", waitingLobbies[meetingCode]);
-          });
+      const pSocket = io.sockets.sockets.get(participantSocketId);
+      if (approved) {
+        if (pSocket) {
+          pSocket.emit("lobby-approved");
+          await admitParticipant(io, pSocket, meetingCode, participant.username);
         }
-
-        const participantSocket = io.sockets.sockets.get(participantSocketId);
-        if (approved) {
-          if (participantSocket) {
-            participantSocket.emit("lobby-approved");
-            await admitParticipant(io, participantSocket, meetingCode, participant.username);
-          }
-        } else {
-          if (participantSocket) {
-            participantSocket.emit("lobby-rejected");
-            participantSocket.disconnect();
-          }
+      } else {
+        if (pSocket) {
+          pSocket.emit("lobby-rejected");
+          pSocket.disconnect();
         }
       }
     });
 
-    // Approve all participants in lobby
     socket.on("approve-all", async (meetingCode) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      const hostUsername = socketUsernames[socket.id];
-      if (meeting?.hostId !== hostUsername) return;
+      if (!isSocketHost(socket.id, meetingCode)) return;
 
-      if (waitingLobbies[meetingCode]) {
-        const queue = [...waitingLobbies[meetingCode]];
-        waitingLobbies[meetingCode] = [];
+      const queue = waitingLobbies[meetingCode] ? [...waitingLobbies[meetingCode]] : [];
+      waitingLobbies[meetingCode] = [];
+      broadcastToHosts(io, meetingCode, "waiting-room-list", []);
 
-        // Notify hosts
-        if (hostSockets[meetingCode]) {
-          hostSockets[meetingCode].forEach((hostId) => {
-            io.to(hostId).emit("waiting-room-list", []);
-          });
-        }
-
-        for (const p of queue) {
-          const pSocket = io.sockets.sockets.get(p.socketId);
-          if (pSocket) {
-            pSocket.emit("lobby-approved");
-            await admitParticipant(io, pSocket, meetingCode, p.username);
-          }
+      for (const p of queue) {
+        const pSocket = io.sockets.sockets.get(p.socketId);
+        if (pSocket) {
+          pSocket.emit("lobby-approved");
+          await admitParticipant(io, pSocket, meetingCode, p.username);
         }
       }
     });
 
-    // HOST PERMISSION EVENTS
+    // ------------------------------------------------------------------
+    // Host permission controls
+    // ------------------------------------------------------------------
     socket.on("mute-everyone", async (meetingCode) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
-
-      // Broadcast mute all event to all participants
-      if (connections[meetingCode]) {
-        connections[meetingCode].forEach((elem) => {
-          if (elem !== socket.id) {
-            io.to(elem).emit("host-mute-all");
-          }
-        });
-      }
+      if (!isSocketHost(socket.id, meetingCode)) return;
+      broadcastToRoom(io, meetingCode, socket.id, "host-mute-all");
     });
 
     socket.on("toggle-chat", async (meetingCode, isChatDisabled) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
-
-      meeting.isChatDisabled = isChatDisabled;
-      await meeting.save();
-
-      if (connections[meetingCode]) {
-        connections[meetingCode].forEach((elem) => {
-          io.to(elem).emit("chat-permission-updated", isChatDisabled);
-        });
-      }
+      if (!isSocketHost(socket.id, meetingCode)) return;
+      try {
+        await Meeting.findOneAndUpdate({ meetingCode }, { isChatDisabled });
+        broadcastToAll(io, meetingCode, "chat-permission-updated", isChatDisabled);
+      } catch (err) { console.error("[Socket] toggle-chat error:", err); }
     });
 
     socket.on("toggle-screenshare", async (meetingCode, isScreenShareDisabled) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
-
-      meeting.isScreenShareDisabled = isScreenShareDisabled;
-      await meeting.save();
-
-      if (connections[meetingCode]) {
-        connections[meetingCode].forEach((elem) => {
-          io.to(elem).emit("screenshare-permission-updated", isScreenShareDisabled);
-        });
-      }
+      if (!isSocketHost(socket.id, meetingCode)) return;
+      try {
+        await Meeting.findOneAndUpdate({ meetingCode }, { isScreenShareDisabled });
+        broadcastToAll(io, meetingCode, "screenshare-permission-updated", isScreenShareDisabled);
+      } catch (err) { console.error("[Socket] toggle-screenshare error:", err); }
     });
 
     socket.on("toggle-lock", async (meetingCode, isLocked) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
-
-      meeting.isLocked = isLocked;
-      await meeting.save();
-
-      if (connections[meetingCode]) {
-        connections[meetingCode].forEach((elem) => {
-          io.to(elem).emit("meeting-lock-updated", isLocked);
-        });
-      }
+      if (!isSocketHost(socket.id, meetingCode)) return;
+      try {
+        await Meeting.findOneAndUpdate({ meetingCode }, { isLocked });
+        broadcastToAll(io, meetingCode, "meeting-lock-updated", isLocked);
+      } catch (err) { console.error("[Socket] toggle-lock error:", err); }
     });
 
-    socket.on("remove-participant", async (meetingCode, targetSocketId) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
-
+    socket.on("remove-participant", (meetingCode, targetSocketId) => {
+      if (!isSocketHost(socket.id, meetingCode)) return;
       const targetSocket = io.sockets.sockets.get(targetSocketId);
       if (targetSocket) {
         targetSocket.emit("host-removed-you");
@@ -212,12 +187,14 @@ export const connectToSocket = (server) => {
     });
 
     socket.on("end-meeting-all", async (meetingCode) => {
-      const meeting = await Meeting.findOne({ meetingCode });
-      if (meeting?.hostId !== socketUsernames[socket.id]) return;
+      if (!isSocketHost(socket.id, meetingCode)) return;
+      try {
+        await Meeting.findOneAndUpdate({ meetingCode }, { meetingStatus: "ENDED" });
+      } catch (err) { /* non-critical */ }
 
       if (connections[meetingCode]) {
-        connections[meetingCode].forEach((elem) => {
-          const s = io.sockets.sockets.get(elem);
+        connections[meetingCode].forEach((id) => {
+          const s = io.sockets.sockets.get(id);
           if (s) {
             s.emit("meeting-ended-by-host");
             s.disconnect();
@@ -226,184 +203,205 @@ export const connectToSocket = (server) => {
       }
     });
 
+    // ------------------------------------------------------------------
+    // WebRTC signaling
+    // ------------------------------------------------------------------
     socket.on("signal", (toId, message) => {
       io.to(toId).emit("signal", socket.id, message);
     });
 
+    // ------------------------------------------------------------------
+    // Chat
+    // ------------------------------------------------------------------
     socket.on("chat-message", (data, sender) => {
-      const [matchingRoom, found] = Object.entries(connections).reduce(
-        ([room, isFound], [roomKey, roomValue]) => {
-          if (!isFound && roomValue.includes(socket.id)) {
-            return [roomKey, true];
-          }
-          return [room, isFound];
-        },
-        ["", false]
-      );
+      const meetingCode = findRoomForSocket(socket.id);
+      if (!meetingCode) return;
 
-      if (found === true) {
-        if (messages[matchingRoom] === undefined) {
-          messages[matchingRoom] = [];
-        }
+      if (!messages[meetingCode]) messages[meetingCode] = [];
+      messages[meetingCode].push({ sender, data, "socket-id-sender": socket.id });
 
-        messages[matchingRoom].push({
-          sender: sender,
-          data: data,
-          "socket-id-sender": socket.id,
-        });
-
-        connections[matchingRoom].forEach((elem) => {
-          io.to(elem).emit("chat-message", data, sender, socket.id);
-        });
-      }
+      connections[meetingCode].forEach((id) => {
+        io.to(id).emit("chat-message", data, sender, socket.id);
+      });
     });
 
+    // ------------------------------------------------------------------
+    // Raise hand
+    // ------------------------------------------------------------------
     socket.on("raise-hand", (meetingCode, raised) => {
-      if (connections[meetingCode] !== undefined) {
-        connections[meetingCode].forEach((elem) => {
-          if (elem !== socket.id) {
-            io.to(elem).emit("user-raised-hand", socket.id, raised, socketUsernames[socket.id]);
-          }
-        });
-      }
+      if (!connections[meetingCode]) return;
+      const meta = socketMeta[socket.id];
+      connections[meetingCode].forEach((id) => {
+        if (id !== socket.id) {
+          io.to(id).emit("user-raised-hand", socket.id, raised, meta?.username || "Unknown");
+        }
+      });
     });
 
+    // ------------------------------------------------------------------
+    // Emoji reactions
+    // ------------------------------------------------------------------
     socket.on("send-emoji", (meetingCode, emoji) => {
-      if (connections[meetingCode] !== undefined) {
-        connections[meetingCode].forEach((elem) => {
-          if (elem !== socket.id) {
-            io.to(elem).emit("emoji-received", emoji, socketUsernames[socket.id]);
-          }
-        });
-      }
+      if (!connections[meetingCode]) return;
+      const meta = socketMeta[socket.id];
+      connections[meetingCode].forEach((id) => {
+        if (id !== socket.id) {
+          io.to(id).emit("emoji-received", emoji, meta?.username || "Unknown");
+        }
+      });
     });
 
+    // ------------------------------------------------------------------
+    // Live transcription
+    // ------------------------------------------------------------------
     socket.on("transcription-chunk", async (path, speaker, text) => {
-      const urlParts = path.split("/");
-      const meetingCode = urlParts[urlParts.length - 1];
+      const pathParts = path.split("/");
+      const meetingCode = pathParts[pathParts.length - 1];
 
       await saveTranscriptSegment(meetingCode, speaker, text);
-      if (connections[meetingCode] !== undefined) {
-        connections[meetingCode].forEach((elem) => {
-          io.to(elem).emit("transcription-chunk", speaker, text);
+
+      if (connections[meetingCode]) {
+        connections[meetingCode].forEach((id) => {
+          io.to(id).emit("transcription-chunk", speaker, text);
         });
       }
     });
 
+    // ------------------------------------------------------------------
+    // Disconnect
+    // ------------------------------------------------------------------
     socket.on("disconnect", () => {
-      const username = socketUsernames[socket.id];
-      delete socketUsernames[socket.id];
+      const meta = socketMeta[socket.id] || {};
+      delete socketMeta[socket.id];
 
-      // Cleanup host sockets
+      // Clean up host socket registry
       Object.keys(hostSockets).forEach((code) => {
         hostSockets[code] = hostSockets[code].filter((id) => id !== socket.id);
       });
 
-      // Cleanup waiting lobby queues
+      // Clean up waiting lobbies
       Object.keys(waitingLobbies).forEach((code) => {
         if (waitingLobbies[code]) {
-          waitingLobbies[code] = waitingLobbies[code].filter(
-            (p) => p.socketId !== socket.id
-          );
-          // Broadcast updated lobby list to hosts
-          if (hostSockets[code]) {
-            hostSockets[code].forEach((hostId) => {
-              io.to(hostId).emit("waiting-room-list", waitingLobbies[code]);
-            });
-          }
+          waitingLobbies[code] = waitingLobbies[code].filter((p) => p.socketId !== socket.id);
+          broadcastToHosts(io, code, "waiting-room-list", waitingLobbies[code]);
         }
       });
 
-      for (const [k, v] of JSON.parse(
-        JSON.stringify(Object.entries(connections))
-      )) {
-        for (let a = 0; a < v.length; ++a) {
-          if (v[a] === socket.id) {
-            const key = k;
+      // Remove from active rooms
+      for (const [meetingCode, participants] of Object.entries(connections)) {
+        const idx = participants.indexOf(socket.id);
+        if (idx === -1) continue;
 
-            for (let a = 0; a < connections[key].length; ++a) {
-              io.to(connections[key][a]).emit("user-left", socket.id);
-            }
+        // Notify everyone this user left
+        participants.forEach((id) => io.to(id).emit("user-left", socket.id));
+        participants.splice(idx, 1);
 
-            var index = connections[key].indexOf(socket.id);
-            connections[key].splice(index, 1);
+        // If room is now empty → run AI post-processing
+        if (participants.length === 0) {
+          const code = meetingCode;
+          delete connections[code];
 
-            if (connections[key].length === 0) {
-              const finishedRoom = key;
-              getFullTranscriptText(finishedRoom)
-                .then(async (fullText) => {
-                  if (fullText && fullText.trim() !== "") {
-                    console.log(`Processing AI analysis for completed meeting: ${finishedRoom}`);
-                    await generateSummary(finishedRoom, fullText);
-                    await extractTasks(finishedRoom, fullText);
-                    await generateAnalytics(finishedRoom);
-                    console.log(`AI processing completed for meeting: ${finishedRoom}`);
-                  }
-                })
-                .catch((err) => {
-                  console.error("AI Post-meeting processing failed:", err);
-                });
-
-              delete connections[finishedRoom];
-            }
-          }
+          getFullTranscriptText(code)
+            .then(async (fullText) => {
+              if (fullText && fullText.trim() !== "") {
+                console.log(`[AI] Post-meeting processing for: ${code}`);
+                await generateSummary(code, fullText);
+                await extractTasks(code, fullText);
+                await generateAnalytics(code);
+                console.log(`[AI] Done for: ${code}`);
+              }
+            })
+            .catch((err) => console.error("[AI] Post-meeting error:", err));
         }
+        break;
       }
+
+      console.log(`[Socket] Disconnected: ${socket.id}`);
     });
   });
 
   return io;
 };
 
-// Helper: admitting a participant into standard call connections
-const admitParticipant = async (io, socket, meetingCode, username) => {
-  if (connections[meetingCode] === undefined) {
-    connections[meetingCode] = [];
-  }
-  connections[meetingCode].push(socket.id);
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
+/**
+ * Checks if a socket belongs to the host of a meeting.
+ * Uses userId stored in socketMeta to compare against meeting.hostId in DB.
+ */
+const isSocketHost = (socketId, meetingCode) => {
+  const meta = socketMeta[socketId];
+  if (!meta || !meta.userId) return false;
+  // hostSockets is built during join-call when userId === meeting.hostId
+  return hostSockets[meetingCode]?.includes(socketId) || false;
+};
+
+const findRoomForSocket = (socketId) => {
+  for (const [code, participants] of Object.entries(connections)) {
+    if (participants.includes(socketId)) return code;
+  }
+  return null;
+};
+
+const broadcastToHosts = (io, meetingCode, event, ...args) => {
+  const hosts = hostSockets[meetingCode] || [];
+  hosts.forEach((id) => io.to(id).emit(event, ...args));
+};
+
+const broadcastToRoom = (io, meetingCode, excludeSocketId, event, ...args) => {
+  const participants = connections[meetingCode] || [];
+  participants.forEach((id) => {
+    if (id !== excludeSocketId) io.to(id).emit(event, ...args);
+  });
+};
+
+const broadcastToAll = (io, meetingCode, event, ...args) => {
+  const participants = connections[meetingCode] || [];
+  participants.forEach((id) => io.to(id).emit(event, ...args));
+};
+
+/**
+ * Admit a participant into the WebRTC room.
+ * Syncs past chat, transcripts, and permission state.
+ */
+const admitParticipant = async (io, socket, meetingCode, username) => {
+  if (!connections[meetingCode]) connections[meetingCode] = [];
+  connections[meetingCode].push(socket.id);
   timeOnline[socket.id] = new Date();
 
-  // Notify existing participants in the room
-  for (let a = 0; a < connections[meetingCode].length; a++) {
-    io.to(connections[meetingCode][a]).emit(
-      "user-joined",
-      socket.id,
-      connections[meetingCode]
-    );
+  // Notify everyone (including the new joiner) about updated participant list
+  connections[meetingCode].forEach((id) => {
+    io.to(id).emit("user-joined", socket.id, connections[meetingCode]);
+  });
+
+  // Replay chat history
+  if (messages[meetingCode]) {
+    messages[meetingCode].forEach((msg) => {
+      io.to(socket.id).emit("chat-message", msg.data, msg.sender, msg["socket-id-sender"]);
+    });
   }
 
-  // Sync past chats
-  if (messages[meetingCode] !== undefined) {
-    for (let a = 0; a < messages[meetingCode].length; ++a) {
-      io.to(socket.id).emit(
-        "chat-message",
-        messages[meetingCode][a]["data"],
-        messages[meetingCode][a]["sender"],
-        messages[meetingCode][a]["socket-id-sender"]
-      );
-    }
-  }
-
-  // Sync past transcripts
+  // Replay transcript history
   try {
     const segments = await Transcript.find({ meetingCode }).sort({ timestamp: 1 });
     segments.forEach((seg) => {
       io.to(socket.id).emit("transcription-chunk", seg.speaker, seg.text);
     });
   } catch (err) {
-    console.error("Error syncing previous transcripts:", err);
+    console.error("[Socket] Transcript replay error:", err);
   }
 
-  // Notify new user of current permissions (locked chat / screenshare / mute status)
+  // Sync current meeting permissions
   try {
     const meeting = await Meeting.findOne({ meetingCode });
     if (meeting) {
-      if (meeting.isChatDisabled) socket.emit("chat-permission-updated", true);
+      if (meeting.isChatDisabled)        socket.emit("chat-permission-updated", true);
       if (meeting.isScreenShareDisabled) socket.emit("screenshare-permission-updated", true);
-      if (meeting.isMutedAll) socket.emit("host-mute-all");
+      if (meeting.isMutedAll)            socket.emit("host-mute-all");
     }
   } catch (err) {
-    console.error("Error syncing permissions on join:", err);
+    console.error("[Socket] Permission sync error:", err);
   }
 };
