@@ -3790,3 +3790,152 @@ export default function VideoMeetComponent() {
               </IconButton>
             </div>
           </motion.main>
+
+          {/* Chat panel */}
+          <AnimatePresence>
+            {showModal && activeTab === "chat" && (
+              <motion.aside key="chat" initial={{ x:360, opacity:0 }} animate={{ x:0, opacity:1 }} exit={{ x:360, opacity:0 }} transition={{ type:"spring", stiffness:300, damping:30 }}
+                style={{ width:"360px", flexShrink:0, backgroundColor:"#1e1e1f", borderLeft:"1px solid rgba(255,255,255,0.08)", padding:"20px", display:"flex", flexDirection:"column", height:"100vh", boxSizing:"border-box", zIndex:90 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+                  <span style={{ fontSize:"16px", fontWeight:600, color:"#fff" }}>In-call messages</span>
+                  <button onClick={() => setModal(false)} style={{ background:"none", border:"none", color:"#fff", fontSize:"20px", cursor:"pointer" }}>×</button>
+                </div>
+                {isHost && (
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", backgroundColor:"rgba(255,255,255,0.03)", borderRadius:"8px", marginBottom:"16px" }}>
+                    <span style={{ fontSize:"12px", color:"#ccc" }}>Allow participants to chat</span>
+                    <Switch checked={!isChatDisabled} onChange={() => handleHostToggleChat()} size="small" />
+                  </div>
+                )}
+                <div className={styles.chatBody} style={{ flex:1, overflowY:"auto", marginBottom:"16px" }}>
+                  {messages.length ? messages.map((item, i) => (
+                    <div key={i} style={{ marginBottom:"12px" }}>
+                      <span style={{ fontWeight:"bold", fontSize:"12px", color:"#60a5fa", marginRight:"8px" }}>{item.sender}</span>
+                      <div style={{ fontSize:"13px", color:"#fff", marginTop:"4px", backgroundColor:"rgba(255,255,255,0.04)", padding:"8px 12px", borderRadius:"8px", maxWidth:"90%" }}>{item.data}</div>
+                    </div>
+                  )) : <div style={{ textAlign:"center", color:"#888", fontSize:"12px", marginTop:"40px" }}>No messages yet.</div>}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", backgroundColor:"rgba(255,255,255,0.05)", borderRadius:"24px", padding:"4px 12px", border:"1px solid rgba(255,255,255,0.1)" }}>
+                  <TextField value={message} onChange={(e) => setMessage(e.target.value)} onKeyPress={handleKeyPress}
+                    placeholder={isChatDisabled && !isHost ? "Chat is disabled" : "Send a message"}
+                    disabled={isChatDisabled && !isHost} variant="standard"
+                    InputProps={{ disableUnderline:true, style:{ color:"#fff", fontSize:"13px" } }} fullWidth />
+                  <IconButton onClick={sendMessage} disabled={isChatDisabled && !isHost} size="small" style={{ color:"#fff" }}>➤</IconButton>
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+
+          {/* AI assistant panel */}
+          <AnimatePresence>
+            {showModal && activeTab === "assistant" && (
+              <motion.aside key="ai" initial={{ x:360, opacity:0 }} animate={{ x:0, opacity:1 }} exit={{ x:360, opacity:0 }} transition={{ type:"spring", stiffness:300, damping:30 }}
+                style={{ width:"360px", flexShrink:0, backgroundColor:"#1e1e1f", borderLeft:"1px solid rgba(255,255,255,0.08)", padding:"20px", display:"flex", flexDirection:"column", height:"100vh", boxSizing:"border-box", zIndex:90 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+                  <span style={{ fontSize:"16px", fontWeight:600, color:"#fff" }}>🤖 AI Assistant</span>
+                  <button onClick={() => setModal(false)} style={{ background:"none", border:"none", color:"#fff", fontSize:"20px", cursor:"pointer" }}>×</button>
+                </div>
+                <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", marginBottom:"16px" }}>
+                  <Button size="small" onClick={() => askAIQuestion("Summarize today's meeting.")} style={{ backgroundColor:"rgba(255,255,255,0.04)", color:"#fff", textTransform:"none", borderRadius:"16px", fontSize:"11px", border:"1px solid rgba(255,255,255,0.08)" }}>📝 Summarize</Button>
+                  <Button size="small" onClick={() => askAIQuestion("What were the decisions?")} style={{ backgroundColor:"rgba(255,255,255,0.04)", color:"#fff", textTransform:"none", borderRadius:"16px", fontSize:"11px", border:"1px solid rgba(255,255,255,0.08)" }}>📌 Key Decisions</Button>
+                </div>
+                <div style={{ flex:1, overflowY:"auto", marginBottom:"16px", display:"flex", flexDirection:"column", gap:"12px" }}>
+                  {aiChatHistory.map((item, i) => (
+                    <div key={i} style={{ alignSelf: item.role === "user" ? "flex-end" : "flex-start", maxWidth:"85%", backgroundColor: item.role === "user" ? "rgba(1,140,203,0.15)" : "rgba(255,255,255,0.04)", border: item.role === "user" ? "1px solid rgba(1,140,203,0.3)" : "1px solid rgba(255,255,255,0.06)", padding:"10px 14px", borderRadius:"12px", fontSize:"13px", color:"#fff" }}>
+                      <div style={{ fontSize:"10px", color:"#018CCB", fontWeight:"bold", marginBottom:"4px" }}>{item.role === "user" ? "You" : "MeetFlow AI"}</div>
+                      <div style={{ whiteSpace:"pre-wrap" }}>{item.text}</div>
+                    </div>
+                  ))}
+                  {aiLoading && <div style={{ display:"flex", gap:"8px", alignItems:"center", padding:"10px 14px", alignSelf:"flex-start", backgroundColor:"rgba(255,255,255,0.04)", borderRadius:"12px" }}><CircularProgress size={16} style={{ color:"#018CCB" }} /><span style={{ fontSize:"12px", color:"#aaa" }}>Thinking...</span></div>}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", backgroundColor:"rgba(255,255,255,0.05)", borderRadius:"24px", padding:"4px 12px", border:"1px solid rgba(255,255,255,0.1)" }}>
+                  <TextField value={aiQuestion} onChange={(e) => setAiQuestion(e.target.value)} onKeyPress={(e) => { if (e.key === "Enter") askAIQuestion(aiQuestion); }} placeholder="Ask a question..." variant="standard" InputProps={{ disableUnderline:true, style:{ color:"#fff", fontSize:"13px" } }} fullWidth />
+                  <IconButton onClick={() => askAIQuestion(aiQuestion)} size="small" style={{ color:"#fff" }}>➤</IconButton>
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+
+          {/* People sidebar */}
+          <PeopleSidebar isOpen={showPeopleModal} onClose={() => setShowPeopleModal(false)}
+            onAddPeople={() => setAddPeopleOpen(true)} username={username} videos={videos} isHost={isHost}
+            onRemove={handleHostRemove} />
+        </div>
+      )}
+
+      {/* Add people dialog */}
+      <Dialog open={addPeopleOpen} onClose={() => { setAddPeopleOpen(false); setInviteEmail(""); setSelectedSuggestions([]); }} maxWidth="xs" fullWidth
+        PaperProps={{ style:{ backgroundColor:"#fff", color:"#111", borderRadius:"16px", padding:"24px" } }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+          <Typography variant="h6" style={{ fontWeight:600, fontSize:"20px" }}>Add people</Typography>
+          <IconButton onClick={() => setAddPeopleOpen(false)} size="small">×</IconButton>
+        </div>
+        <TextField value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="Enter name or email" variant="outlined" fullWidth size="small" style={{ marginBottom:"16px" }} />
+        <Typography variant="subtitle2" style={{ fontWeight:600, color:"#5f6368", marginBottom:"12px", fontSize:"12px" }}>Suggestions</Typography>
+        <div style={{ display:"flex", flexDirection:"column", gap:"12px", marginBottom:"24px" }}>
+          {suggestionsList.map((c) => {
+            const checked = selectedSuggestions.includes(c.email);
+            return (
+              <div key={c.email} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                  <div style={{ width:"36px", height:"36px", borderRadius:"50%", backgroundColor:"#1a73e8", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"13px", fontWeight:"bold", color:"#fff" }}>{c.initials}</div>
+                  <div><div style={{ fontSize:"14px", fontWeight:500 }}>{c.name}</div><div style={{ fontSize:"12px", color:"#5f6368" }}>{c.email}</div></div>
+                </div>
+                <Checkbox checked={checked} onChange={(e) => { if (e.target.checked) setSelectedSuggestions([...selectedSuggestions, c.email]); else setSelectedSuggestions(selectedSuggestions.filter((x) => x !== c.email)); }} color="primary" />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <FormControlLabel control={<Checkbox size="small" checked={isGroupEmail} onChange={(e) => setIsGroupEmail(e.target.checked)} />} label={<span style={{ fontSize:"13px", color:"#5f6368" }}>Group email</span>} />
+          <Button variant="contained" disabled={!inviteEmail.trim() && !selectedSuggestions.length} onClick={handleSendInvitations}
+            style={{ backgroundColor:"#1a73e8", color:"#fff", textTransform:"none", borderRadius:"20px", padding:"6px 20px", fontWeight:600 }}>
+            Send email
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Settings dialog */}
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ style:{ backgroundColor:"#1e1e1f", color:"#fff", borderRadius:"16px", border:"1px solid rgba(255,255,255,0.08)" } }}>
+        <DialogTitle style={{ borderBottom:"1px solid rgba(255,255,255,0.1)", fontWeight:"bold" }}>Settings</DialogTitle>
+        <DialogContent style={{ display:"flex", padding:0, minHeight:"320px" }}>
+          <div style={{ width:"140px", borderRight:"1px solid rgba(255,255,255,0.1)", display:"flex", flexDirection:"column", gap:"4px", padding:"16px 8px", backgroundColor:"rgba(0,0,0,0.1)" }}>
+            {["audio","video","appearance","privacy"].map((tab) => (
+              <Button key={tab} onClick={() => setSettingsTab(tab)} style={{ justifyContent:"flex-start", textTransform:"capitalize", color: settingsTab === tab ? "#018CCB" : "#fff", backgroundColor: settingsTab === tab ? "rgba(1,140,203,0.1)" : "transparent", fontWeight: settingsTab === tab ? "bold" : "normal", fontSize:"13px", padding:"8px 12px", borderRadius:"8px" }}>{tab}</Button>
+            ))}
+          </div>
+          <div style={{ flex:1, padding:"24px", display:"flex", flexDirection:"column", gap:"20px", overflowY:"auto" }}>
+            {settingsTab === "audio" && <>
+              <Typography variant="subtitle2" style={{ fontWeight:"bold", color:"#018CCB" }}>Audio</Typography>
+              <FormControlLabel control={<Switch checked={noiseSuppression} onChange={(e) => setNoiseSuppression(e.target.checked)} size="small" />} label={<Typography variant="body2">AI Noise Suppression</Typography>} />
+              <FormControlLabel control={<Switch checked={echoCancellation} onChange={(e) => setEchoCancellation(e.target.checked)} size="small" />} label={<Typography variant="body2">Echo Cancellation</Typography>} />
+            </>}
+            {settingsTab === "video" && <>
+              <Typography variant="subtitle2" style={{ fontWeight:"bold", color:"#018CCB" }}>Video</Typography>
+              <FormControlLabel control={<Switch checked={mirrorMode} onChange={(e) => setMirrorMode(e.target.checked)} size="small" />} label={<Typography variant="body2">Mirror Webcam</Typography>} />
+              <FormControlLabel control={<Switch checked={hdMode} onChange={(e) => setHdMode(e.target.checked)} size="small" />} label={<Typography variant="body2">HD Video</Typography>} />
+            </>}
+            {settingsTab === "appearance" && <>
+              <Typography variant="subtitle2" style={{ fontWeight:"bold", color:"#018CCB" }}>Appearance</Typography>
+              <FormControl fullWidth size="small">
+                <Select value={layoutMode} onChange={(e) => setLayoutMode(e.target.value)} style={{ color:"#fff", backgroundColor:"rgba(0,0,0,0.2)" }}>
+                  <MenuItem value="compact">Compact</MenuItem>
+                  <MenuItem value="comfortable">Comfortable</MenuItem>
+                </Select>
+              </FormControl>
+            </>}
+            {settingsTab === "privacy" && <>
+              <Typography variant="subtitle2" style={{ fontWeight:"bold", color:"#018CCB" }}>Privacy</Typography>
+              <FormControlLabel control={<Switch defaultChecked size="small" />} label={<Typography variant="body2">Encrypt WebRTC (SRTP)</Typography>} />
+            </>}
+          </div>
+        </DialogContent>
+        <DialogActions style={{ borderTop:"1px solid rgba(255,255,255,0.1)", padding:"12px 24px" }}>
+          <Button onClick={() => setSettingsOpen(false)} variant="contained" style={{ backgroundColor:"#018CCB" }}>Done</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={copySnackbar} autoHideDuration={3000} onClose={() => setCopySnackbar(false)} message="Meeting link copied!" anchorOrigin={{ vertical:"bottom", horizontal:"center" }} />
+    </div>
+  );
+}

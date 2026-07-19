@@ -16,14 +16,15 @@ function App() {
         <ThemeProvider>
           <AuthProvider>
             <Routes>
-              <Route path="/" element={<LandingPage />} />
-
-              <Route path="/auth" element={<Authentication />} />
-
-              <Route path="/home" s element={<HomeComponent />} />
-              <Route path="/history" element={<History />} />
-              <Route path="/insights" element={<InsightsDashboard />} />
-              <Route path="/:url" element={<VideoMeetComponent />} />
+              <Route path="/"                      element={<LandingPage />} />
+              <Route path="/auth"                  element={<Authentication />} />
+              <Route path="/home"                  element={<HomeComponent />} />
+              <Route path="/history"               element={<History />} />
+              <Route path="/insights"              element={<InsightsDashboard />} />
+              {/* Primary route: /meeting/:meetingCode */}
+              <Route path="/meeting/:meetingCode"  element={<VideoMeetComponent />} />
+              {/* Legacy fallback: /:url (handles old links / direct code entry) */}
+              <Route path="/:url"                  element={<VideoMeetComponent />} />
             </Routes>
           </AuthProvider>
         </ThemeProvider>

@@ -80,13 +80,15 @@ function HomeComponent() {
   const handleJoinVideoCall = async () => {
     if (!meetingCode.trim()) return;
     let cleanCode = meetingCode.trim();
+    // Strip any URL prefix to extract the bare meeting code
     if (cleanCode.includes("/meeting/")) {
       cleanCode = cleanCode.split("/meeting/")[1];
     } else if (cleanCode.includes("/")) {
       cleanCode = cleanCode.substring(cleanCode.lastIndexOf("/") + 1);
     }
+    cleanCode = cleanCode.split("?")[0].split("#")[0]; // strip query/hash
     await addToUserHistory(cleanCode);
-    navigate(`/${cleanCode}`);
+    navigate(`/meeting/${cleanCode}`);
   };
 
   const handleCreateInstantMeeting = async () => {
@@ -102,7 +104,7 @@ function HomeComponent() {
         description: "Created instantly via dashboard."
       });
       await addToUserHistory(res.data.meetingCode);
-      navigate(`/${res.data.meetingCode}`);
+      navigate(`/meeting/${res.data.meetingCode}`);
     } catch (err) {
       console.error(err);
       showToast("Failed to create instant meeting.");
@@ -140,7 +142,8 @@ function HomeComponent() {
         password,
         waitingRoomEnabled: waitingRoom,
         meetingTitle: meetingTitle || "Scheduled MeetFlow Meeting",
-        description
+        description,
+        attendeeEmails: guests ? guests.split(",").map((e) => e.trim()).filter(Boolean) : []
       });
       setCreatedMeeting(res.data);
       setSchedulerOpen(false);
@@ -192,7 +195,7 @@ END:VCALENDAR`;
   const handleCopyInvite = () => {
     if (!createdMeeting) return;
     const link = `${window.location.origin}/meeting/${createdMeeting.meetingCode}`;
-    const text = `Join my MeetFlow Meeting!\n\nLink: ${link}\nMeeting Code: ${createdMeeting.meetingCode}${createdMeeting.meetingPassword ? `\nPassword: ${createdMeeting.meetingPassword}` : ''}`;
+    const text = `Join my MeetFlow Meeting!\n\nLink: ${link}\nMeeting Code: ${createdMeeting.meetingCode}`;
     navigator.clipboard.writeText(text);
     showToast("Invitation copied to clipboard!");
   };
@@ -242,6 +245,9 @@ END:VCALENDAR`;
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("username");
+    localStorage.removeItem("name");
     navigate("/auth");
   };
 
@@ -605,7 +611,7 @@ END:VCALENDAR`;
               <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
               <Button onClick={() => {
                 setInviteOpen(false);
-                navigate(`/${createdMeeting.meetingCode}`);
+                navigate(`/meeting/${createdMeeting.meetingCode}`);
               }} variant="contained" sx={{ backgroundColor: "#018CCB" }}>
                 Open Meeting
               </Button>
