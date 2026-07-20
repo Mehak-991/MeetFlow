@@ -48,7 +48,6 @@ export default function Schedule() {
   const navigate = useNavigate();
 
   const [meetings,      setMeetings]      = useState([]);
-  const [total,         setTotal]         = useState(0);
   const [page,          setPage]          = useState(1);
   const [pages,         setPages]         = useState(1);
   const [loading,       setLoading]       = useState(true);
@@ -69,7 +68,7 @@ export default function Schedule() {
 
   // ── Fetch meetings ──────────────────────────────────────────────────────────
   const fetchMeetings = useCallback(
-    async (currPage = page, sQuery = search, sFilter = statusFilter) => {
+    async (currPage, sQuery, sFilter) => {
       setLoading(true);
       try {
         const params = { page: String(currPage), limit: "6" };
@@ -78,7 +77,6 @@ export default function Schedule() {
 
         const data = await listCalendarMeetings(params);
         setMeetings(data.meetings || []);
-        setTotal(data.total   || 0);
         setPages(data.pages   || 1);
         setPage(data.page     || currPage);
       } catch (err) {
@@ -87,7 +85,7 @@ export default function Schedule() {
         setLoading(false);
       }
     },
-    [page, search, statusFilter]
+    []
   );
 
   useEffect(() => {
@@ -97,8 +95,7 @@ export default function Schedule() {
     }
     setUserInfo(getGoogleUser());
     fetchMeetings(1, "", "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate, fetchMeetings]);
 
   // ── Logout ──────────────────────────────────────────────────────────────────
   const handleLogout = () => {
@@ -118,7 +115,7 @@ export default function Schedule() {
     if (!window.confirm("Cancel this meeting? This will also remove it from Google Calendar.")) return;
     try {
       await cancelCalendarMeeting(meetingCode);
-      fetchMeetings();
+      fetchMeetings(page, search, statusFilter);
     } catch (err) {
       alert(err.message || "Failed to cancel meeting.");
     }
@@ -150,7 +147,7 @@ export default function Schedule() {
         timezone:  meeting.timezone || "UTC",
       });
       setReschedulingCode(null);
-      fetchMeetings();
+      fetchMeetings(page, search, statusFilter);
     } catch (err) {
       alert(err.message || "Failed to reschedule.");
     } finally {
@@ -465,7 +462,7 @@ export default function Schedule() {
         {!loading && pages > 1 && (
           <div className="flex items-center justify-center gap-4 pt-6">
             <button
-              onClick={() => { if (page > 1) fetchMeetings(page - 1); }}
+              onClick={() => { if (page > 1) fetchMeetings(page - 1, search, statusFilter); }}
               disabled={page === 1}
               className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 disabled:opacity-50 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
@@ -475,7 +472,7 @@ export default function Schedule() {
               Page {page} of {pages}
             </span>
             <button
-              onClick={() => { if (page < pages) fetchMeetings(page + 1); }}
+              onClick={() => { if (page < pages) fetchMeetings(page + 1, search, statusFilter); }}
               disabled={page === pages}
               className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 disabled:opacity-50 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
@@ -491,7 +488,7 @@ export default function Schedule() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => {
           setIsModalOpen(false);
-          fetchMeetings(1);
+          fetchMeetings(1, search, statusFilter);
         }}
       />
     </div>

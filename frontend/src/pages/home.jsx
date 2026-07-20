@@ -26,9 +26,7 @@ import {
   Paper,
   Menu
 } from "@mui/material";
-import RestoreIcon from "@mui/icons-material/Restore";
 import LogoutIcon from "@mui/icons-material/Logout";
-import BarChartIcon from "@mui/icons-material/BarChart";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
