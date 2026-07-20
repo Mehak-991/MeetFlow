@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import io from "socket.io-client";
 import {
   Badge,
@@ -152,6 +152,7 @@ export default function VideoMeetComponent() {
   const [noiseSuppression, setNoiseSuppression] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
 
+
   // Web Audio refs for real-time mic test & noise suppression filter
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -194,6 +195,14 @@ export default function VideoMeetComponent() {
     { name: "Aarav Sharma", email: "aarav.sharma@gmail.com", initials: "AS" },
     { name: "Mehak Verma", email: "mehak.verma@meetflow.com", initials: "MV" }
   ];
+
+  const handleVideo = useCallback(() => {
+    setVideo(prev => !prev);
+  }, []);
+
+  const handleAudio = useCallback(() => {
+    setAudio(prev => !prev);
+  }, []);
 
   const getUserMediaSuccess = useCallback((stream) => {
     try {
@@ -564,26 +573,7 @@ export default function VideoMeetComponent() {
     setAudio(audioAvailable);
     connectToSocketServer();
   }, [videoAvailable, audioAvailable, connectToSocketServer]);
-  
-  const handleAudio = () => {
-  setAudio(prev => !prev);
 
-  if (myVideoStream?.current) {
-    myVideoStream.current.getAudioTracks().forEach(track => {
-      track.enabled = !audio;
-    });
-  }
-};
-
-const handleVideo = () => {
-  setVideo(prev => !prev);
-
-  if (myVideoStream?.current) {
-    myVideoStream.current.getVideoTracks().forEach(track => {
-      track.enabled = !video;
-    });
-  }
-};
   const getPermissions = useCallback(async () => {
     try {
       let videoAvailableVal = false;
@@ -1083,6 +1073,7 @@ const handleVideo = () => {
       alert("Please enter a username.");
       return;
     }
+    console.log("Companion:", companionMode, "Present:", presentOnly);
     setAskForUsername(false);
   };
 
