@@ -1084,14 +1084,6 @@ export default function VideoMeetComponent() {
     return parts[0][0].toUpperCase();
   };
 
-  const triggerFloatingEmoji = (emoji, senderName = "Guest") => {
-    const id = Math.random();
-    setFloatingEmojis(prev => [...prev, { id, emoji, senderName, left: Math.random() * 60 + 20 }]);
-    setTimeout(() => {
-      setFloatingEmojis(prev => prev.filter(e => e.id !== id));
-    }, 2500);
-  };
-
   const sendEmoji = (emoji) => {
     if (socketRef.current) {
       socketRef.current.emit("send-emoji", meetingCode, emoji);
