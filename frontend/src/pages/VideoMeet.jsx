@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+﻿import React, { useEffect, useRef, useState, useCallback } from "react";
 import io from "socket.io-client";
 import {
   Badge,
@@ -771,21 +771,6 @@ export default function VideoMeetComponent() {
       setMeetingLoading(false);
     }
   }, [askForUsername, username, meetingCode, getMedia]);
-
-  // Enumerate active devices
-  const getDevices = useCallback(async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevs = devices.filter(d => d.kind === "videoinput");
-      const audioDevs = devices.filter(d => d.kind === "audioinput");
-      setVideoDevices(videoDevs);
-      setAudioDevices(audioDevs);
-      if (videoDevs.length && !selectedVideo) setSelectedVideo(videoDevs[0].deviceId);
-      if (audioDevs.length && !selectedAudio) setSelectedAudio(audioDevs[0].deviceId);
-    } catch (e) {
-      console.error("Error enumerating devices:", e);
-    }
-  }, [selectedVideo, selectedAudio]);
 
   useEffect(() => {
     getDevices();
