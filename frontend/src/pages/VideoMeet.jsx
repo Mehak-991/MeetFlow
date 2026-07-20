@@ -99,6 +99,9 @@ export default function VideoMeetComponent() {
   let [showModal, setModal] = useState(false);
   const [showPeopleModal, setShowPeopleModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  const [companionMode, setCompanionMode] = useState(false);
+const [presentOnly, setPresentOnly] = useState(false);
 
 
   let [screenAvailable, setScreenAvailable] = useState();
@@ -561,7 +564,26 @@ export default function VideoMeetComponent() {
     setAudio(audioAvailable);
     connectToSocketServer();
   }, [videoAvailable, audioAvailable, connectToSocketServer]);
+  
+  const handleAudio = () => {
+  setAudio(prev => !prev);
 
+  if (myVideoStream?.current) {
+    myVideoStream.current.getAudioTracks().forEach(track => {
+      track.enabled = !audio;
+    });
+  }
+};
+
+const handleVideo = () => {
+  setVideo(prev => !prev);
+
+  if (myVideoStream?.current) {
+    myVideoStream.current.getVideoTracks().forEach(track => {
+      track.enabled = !video;
+    });
+  }
+};
   const getPermissions = useCallback(async () => {
     try {
       let videoAvailableVal = false;
