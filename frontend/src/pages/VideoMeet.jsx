@@ -99,9 +99,9 @@ export default function VideoMeetComponent() {
   let [showModal, setModal] = useState(false);
   const [showPeopleModal, setShowPeopleModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  
+
   const [companionMode, setCompanionMode] = useState(false);
-const [presentOnly, setPresentOnly] = useState(false);
+  const [presentOnly, setPresentOnly] = useState(false);
 
 
   let [screenAvailable, setScreenAvailable] = useState();
