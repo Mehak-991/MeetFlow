@@ -85,18 +85,40 @@ const addToHistory = async (req, res) => {
     const user = await User.findOne({ token });
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    // Only add to history if not already present for this user
-    const exists = await Meeting.findOne({ user_id: user.username, meetingCode: meeting_code });
-    if (!exists) {
-      const newEntry = new Meeting({
-        user_id: user.username,
-        meetingCode: meeting_code,
-        hostId: user._id.toString(), // default host to the user adding history
-        createdBy: user.username,
-        meetingStatus: "ACTIVE"
-      });
-      await newEntry.save();
+    const normalizedCode = meeting_code?.trim();
+    if (!normalizedCode) {
+      return res.status(400).json({ message: "Meeting code is required" });
     }
+
+    // Per-user history entry — do not duplicate the canonical meeting document
+    const existsInHistory = await Meeting.findOne({
+      user_id: user.username,
+      meetingCode: normalizedCode,
+    });
+    if (existsInHistory) {
+      return res.status(httpStatus.CREATED).json({ message: "Added to history" });
+    }
+
+    // Meeting already exists (created by host) — meetingCode is globally unique
+    const existingMeeting = await Meeting.findOne({ meetingCode: normalizedCode });
+    if (existingMeeting) {
+      const joinerRef = (user.email || user.username || "").toLowerCase();
+      if (joinerRef && !existingMeeting.attendees.includes(joinerRef)) {
+        existingMeeting.attendees.push(joinerRef);
+        await existingMeeting.save();
+      }
+      return res.status(httpStatus.CREATED).json({ message: "Added to history" });
+    }
+
+    // Legacy path: user entered a code that does not exist yet
+    const newEntry = new Meeting({
+      user_id: user.username,
+      meetingCode: normalizedCode,
+      hostId: user._id.toString(),
+      createdBy: user.username,
+      meetingStatus: "ACTIVE",
+    });
+    await newEntry.save();
     return res.status(httpStatus.CREATED).json({ message: "Added to history" });
   } catch (e) {
     return res.status(500).json({ message: `Something went wrong: ${e.message}` });

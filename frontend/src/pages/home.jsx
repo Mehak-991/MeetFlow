@@ -84,8 +84,13 @@ function HomeComponent() {
     } else if (cleanCode.includes("/")) {
       cleanCode = cleanCode.substring(cleanCode.lastIndexOf("/") + 1);
     }
-    cleanCode = cleanCode.split("?")[0].split("#")[0]; // strip query/hash
-    await addToUserHistory(cleanCode);
+    cleanCode = cleanCode.split("?")[0].split("#")[0].replace(/\/$/, ""); // strip query/hash/trailing slash
+    try {
+      await addToUserHistory(cleanCode);
+    } catch (err) {
+      // History is optional — never block joining an existing host meeting
+      console.warn("Could not add meeting to history:", err?.response?.data?.message || err.message);
+    }
     navigate(`/meeting/${cleanCode}`);
   };
 
